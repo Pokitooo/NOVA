@@ -1,12 +1,24 @@
 #include <RadioLib.h>
 
+constexpr PinName PIN_SPI_MOSI1 = PA_7;
+constexpr PinName PIN_SPI_MISO1 = PA_6;
+constexpr PinName PIN_SPI_SCK1 = PA_5;
+constexpr PinName PIN_NSS_ICM = PA_15;
+constexpr PinName PIN_SPI_CS_SD = PB_9;
+
+constexpr PinName PIN_LORA_NSS = PA_4;
+constexpr PinName PIN_LORA_DIO = PB_0;
+constexpr PinName PIN_LORA_RESET = PB_2;
+constexpr PinName PIN_LORA_BUSY = PB_1;
+
 // Create radio instance: NSS, DIO1, RESET, BUSY
-SX1262 lora = new Module(PA4, PB1, PB2, PB0);
+SPIClass SPI_1(pinNametoDigitalPin(PIN_SPI_MOSI1), pinNametoDigitalPin(PIN_SPI_MISO1), pinNametoDigitalPin(PIN_SPI_SCK1));
+SX1262 lora = new Module(pinNametoDigitalPin(PIN_LORA_NSS), pinNametoDigitalPin(PIN_LORA_DIO), pinNametoDigitalPin(PIN_LORA_RESET), pinNametoDigitalPin(PIN_LORA_BUSY));
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(460800);
   delay(1000);
-
+  SPI_1.begin();
   Serial.println("Initializing LoRa...");
 
   int state = lora.begin();
