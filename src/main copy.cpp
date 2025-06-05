@@ -16,57 +16,33 @@
 #define SPI_SPEED_SD_MHZ (20)
 
 #define DELAY(MS) vTaskDelay(pdMS_TO_TICKS(MS))
-// #define SEALEVELPRESSURE_HPA (1013.25)
+#define SEALEVELPRESSURE_HPA (1013.25)
 
 // Pins defination
-constexpr PinName PIN_SPI_MOSI1 = PA_7;
-constexpr PinName PIN_SPI_MISO1 = PA_6;
-constexpr PinName PIN_SPI_SCK1 = PA_5;
+/*
+constexpr PinName PIN_SPI_MOSI1 =
+constexpr PinName PIN_SPI_MISO1 =
+constexpr PinName PIN_SPI_SCLK1 =
+constexpr PinName PIN_SPI_CS_SD_INT =
+*/
 
-//NSS
-constexpr PinName PIN_NSS_ICM = PA_15;
-constexpr PinName PIN_NSS_SD = PB_9;
-
-
-//i2c
+// Devices
 TwoWire i2c3(PB8, PA8);
+
 SFE_UBLOX_GNSS m10q;
 Adafruit_BME280 bme;
+ICM42688 icm(SPI, PA15);
+// SX1262 lora = new Module(PA4, PB1, PB2, PB0);
+//  Create radio instance: NSS, DIO1, RESET, BUSY
 
-// SPI
-SPIClass spi1(PIN_SPI_MOSI1, PIN_SPI_MISO1, PIN_SPI_SCK1);
+volatile bool dataReady = false;
 
-// SD Config
-SdSpiConfig sd_config(PIN_NSS_SD, SHARED_SPI,SD_SCK_MHZ(25), &spi1);
-SdExFat sd = {};
-ExFile file = {};
-
-// LoRa data
-volatile bool tx_flag = false;
-String s;
-
-// LoRa
-SPISettings lora_spi_settings(18'000'000, MSBFIRST, SPI_MODE0);
-
-// LoRa Parameters
-constexpr struct {
-    float center_freq = 922.500'000f; // MHz
-    float bandwidth = 125.f; // kHz
-    uint8_t spreading_factor = 12; // SF: 6 to 12
-    uint8_t coding_rate = 8; // CR: 5 to 8
-    uint8_t sync_word = 0x12; // Private SX1262
-    int8_t power = 22; // up to 22 dBm for SX1262
-    uint16_t preamble_length = 16;
-} params;
-
-// SX1262 pin connections (adjust pins for your board)
-#define LORA_DIO1 PB0
-#define LORA_NSS  PA4
-#define LORA_BUSY PB1
-#define LORA_NRST  PB2
-
-// Initialize SX1262 module
-SX1262 lora = new Module(LORA_NSS, LORA_DIO1, LORA_NRST, LORA_BUSY, spi1, lora_spi_settings);
+// SD
+// SPIClass SPI_SD(PIN_SPI_MOSI1, PIN_SPI_MISO1, PIN_SPI_SCLK1);
+//SdSpiConfig sd0_cfg(PIN_SPI_CS_SD_INT, DEDICATED_SPI, SD_SCK_MHZ(SPI_SPEED_SD_MHZ), &SPI_SD);
+SdFat32 sd0;
+File32 sd0_file;
+String sd0_filename;
 
 struct Data
 {
@@ -193,6 +169,7 @@ void read_bme(void *)
       data.temp = bme.readTemperature();
       data.humid = bme.readHumidity();
       data.press = bme.readPressure() / 100.0F;
+      data.press_altitude = bme.readAltitude(SEALEVELPRESSURE_HPA);
       xSemaphoreGive(i2cMutex);
     }
     DELAY(200);

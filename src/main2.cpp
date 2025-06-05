@@ -188,6 +188,7 @@ void setup()
     delay(2000);
 
     i2c3.begin();
+    SPI_1.begin();
 
     pinMode(PA0, OUTPUT);
 

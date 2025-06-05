@@ -1,68 +1,120 @@
+#include <Arduino_Extended.h>
+#include <SdFat.h>
 #include <RadioLib.h>
 
-constexpr PinName PIN_SPI_MOSI1 = PA_7;
-constexpr PinName PIN_SPI_MISO1 = PA_6;
-constexpr PinName PIN_SPI_SCK1 = PA_5;
-constexpr PinName PIN_NSS_ICM = PA_15;
-constexpr PinName PIN_SPI_CS_SD = PB_9;
+#define USE_FREERTOS 1
+#if defined(USE_FREERTOS) && USE_FREERTOS
+#define DELAY_MS(MS) vTaskDelay(pdMS_TO_TICKS(MS))
+#else
+#define DELAY_MS(MS) delay(MS)
+#endif
 
-constexpr PinName PIN_LORA_NSS = PA_4;
-constexpr PinName PIN_LORA_DIO = PB_0;
-constexpr PinName PIN_LORA_RESET = PB_2;
-constexpr PinName PIN_LORA_BUSY = PB_1;
+// NSS
+constexpr uint32_t NSS_SD = PB9;
 
-// Create radio instance: NSS, DIO1, RESET, BUSY
-SPIClass SPI_1(pinNametoDigitalPin(PIN_SPI_MOSI1), pinNametoDigitalPin(PIN_SPI_MISO1), pinNametoDigitalPin(PIN_SPI_SCK1));
-SX1262 lora = new Module(pinNametoDigitalPin(PIN_LORA_NSS), pinNametoDigitalPin(PIN_LORA_DIO), pinNametoDigitalPin(PIN_LORA_RESET), pinNametoDigitalPin(PIN_LORA_BUSY));
+// SPI
+SPIClass spi1(PA7, PA6, PA5);
+
+// SD Config
+SdSpiConfig sd_config(NSS_SD, SHARED_SPI,SD_SCK_MHZ(25), &spi1);
+
+// SD
+SdExFat sd = {};
+ExFile file = {};
+
+// LoRa data
+volatile bool tx_flag = false;
+String s;
+
+// LoRa
+SPISettings lora_spi_settings(18'000'000, MSBFIRST, SPI_MODE0);
+
+// LoRa Parameters
+constexpr struct {
+    float center_freq = 922.500'000f; // MHz
+    float bandwidth = 125.f; // kHz
+    uint8_t spreading_factor = 12; // SF: 6 to 12
+    uint8_t coding_rate = 8; // CR: 5 to 8
+    uint8_t sync_word = 0x12; // Private SX1262
+    int8_t power = 22; // up to 22 dBm for SX1262
+    uint16_t preamble_length = 16;
+} params;
+
+// SX1262 pin connections (adjust pins for your board)
+#define LORA_DIO1 PB0
+#define LORA_NSS  PA4
+#define LORA_BUSY PB1
+#define LORA_NRST  PB2
+
+// Initialize SX1262 module
+SX1262 lora = new Module(LORA_NSS, LORA_DIO1, LORA_NRST, LORA_BUSY, spi1, lora_spi_settings);
+
+void set_tx_flag() {
+    tx_flag = true;
+    digitalToggle(PB5);
+}
 
 void setup() {
-  Serial.begin(460800);
-  delay(1000);
-  SPI_1.begin();
-  Serial.println("Initializing LoRa...");
+    static bool state;
+    pinMode(PB5, OUTPUT);
+    Serial.begin();
+    spi1.begin();
 
-  int state = lora.begin();
-  if (state != RADIOLIB_ERR_NONE) {
-    Serial.print("Init failed: ");
-    Serial.println(state);
-    while (true);
-  }
+    delay(2000);
+    Serial.println("Hi!");
 
-  // Set frequency (adjust to your region: 868.0 or 915.0 MHz)
-  lora.setFrequency(915.0);
+    state = sd.begin(sd_config);
+    Serial.printf("SD CARD: %s\n", state ? "SUCCESS" : "FAILED");
+    if (!state) while (true);
 
-  // Set spreading factor (6–12): Higher = longer range, lower speed
-  lora.setSpreadingFactor(10);  // SF10 = good balance
+    int16_t ls = lora.begin(params.center_freq,
+                            params.bandwidth,
+                            params.spreading_factor,
+                            params.coding_rate,
+                            params.sync_word,
+                            params.power,
+                            params.preamble_length,
+                            0,
+                            false);
+    state = state || lora.explicitHeader();
+    state = state || lora.setCRC(true);
+    state = state || lora.autoLDRO();
+    attachInterrupt(LORA_DIO1, set_tx_flag, CHANGE);
 
-  // Set bandwidth (kHz): 62.5, 125, 250, 500
-  lora.setBandwidth(125.0);  // Most commonly used
+    if (ls == RADIOLIB_ERR_NONE) {
+        Serial.println("SX1262 initialized successfully!");
+    } else {
+        Serial.print("Initialization failed! Error: ");
+        Serial.println(ls);
+        while (true);
+    }
 
-  // Set coding rate: 5 = 4/5, 8 = 4/8
-  lora.setCodingRate(5);  // CR 4/5
-
-  // Set transmit power (dBm): max depends on module (SX1262 = ~22 dBm)
-  lora.setOutputPower(20);  // Max reliable without violating regs
-
-  // Optional: Set preamble length
-  lora.setPreambleLength(8);  // Default is 8
-
-  // Finished config
-  Serial.println("LoRa configuration complete!");
+    s.reserve(256);
 }
 
 void loop() {
-  String message = "Hello from E22!";
-  Serial.print("Sending: ");
-  Serial.println(message);
+    // ส่งทุกๆ 5 วิ ขั้นต่ำ, recommend 10 วิ
+    static xcore::nonblocking_delay<uint32_t> nb(5'000, millis);
+    static int16_t state;
+    static uint32_t t0, t;
 
-  int state = lora.transmit(message);
+    if (tx_flag) {
+        tx_flag = false;
+        t = millis();
 
-  if (state == RADIOLIB_ERR_NONE) {
-    Serial.println("Transmission successful!");
-  } else {
-    Serial.print("Transmission failed, code ");
-    Serial.println(state);
-  }
+        if (state == RADIOLIB_ERR_NONE) {
+            Serial.println("Transmission successful!");
+            Serial.printf("Used %d ms\n", t - t0);
+        } else {
+            Serial.print("Transmission failed! Error: ");
+            Serial.println(state);
+        }
 
-  delay(2000);
+        lora.finishTransmit();
+    } else if (nb) {
+        Serial.println("Transmitting packet...");
+        s = "NOVA,13.000000,100.000000,25490,13.000000,100.000000,25490\n";
+        state = lora.startTransmit(s.c_str());
+        t0 = millis();
+    }
 }
