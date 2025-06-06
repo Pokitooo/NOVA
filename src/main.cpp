@@ -12,6 +12,8 @@
 #include "SdFat.h"
 #include "RadioLib.h"
 
+#include "Arduino_Extended.h"
+
 #define UBLOX_CUSTOM_MAX_WAIT (250u)
 #define SPI_SPEED_SD_MHZ (20)
 
@@ -19,16 +21,21 @@
 // #define SEALEVELPRESSURE_HPA (1013.25)
 
 // Pins defination
-constexpr PinName PIN_SPI_MOSI1 = PA_7;
-constexpr PinName PIN_SPI_MISO1 = PA_6;
-constexpr PinName PIN_SPI_SCK1 = PA_5;
+#define PIN_SPI_MOSI1 PA7
+#define PIN_SPI_MISO1 PA6
+#define PIN_SPI_SCK1 PA5
 
-//NSS
-constexpr PinName PIN_NSS_ICM = PA_15;
-constexpr PinName PIN_NSS_SD = PB_9;
+// NSS
+#define PIN_NSS_ICM PA15
+#define PIN_NSS_SD PB9
 
+// lORA PIN DEF
+#define LORA_DIO1 PB0
+#define LORA_NSS PA4
+#define LORA_BUSY PB1
+#define LORA_NRST PB2
 
-//i2c
+// i2c
 TwoWire i2c3(PB8, PA8);
 SFE_UBLOX_GNSS m10q;
 Adafruit_BME280 bme;
@@ -36,51 +43,50 @@ Adafruit_BME280 bme;
 // SPI
 SPIClass spi1(PIN_SPI_MOSI1, PIN_SPI_MISO1, PIN_SPI_SCK1);
 
-// SD Config
-SdSpiConfig sd_config(PIN_NSS_SD, SHARED_SPI,SD_SCK_MHZ(25), &spi1);
+// SD
+SdSpiConfig sd_config(PIN_NSS_SD, SHARED_SPI, SD_SCK_MHZ(25), &spi1);
 SdExFat sd = {};
 ExFile file = {};
 
-// LoRa data
+// LoRa
 volatile bool tx_flag = false;
 String s;
 
-// LoRa
 SPISettings lora_spi_settings(18'000'000, MSBFIRST, SPI_MODE0);
 
-// LoRa Parameters
-constexpr struct {
-    float center_freq = 922.500'000f; // MHz
-    float bandwidth = 125.f; // kHz
-    uint8_t spreading_factor = 12; // SF: 6 to 12
-    uint8_t coding_rate = 8; // CR: 5 to 8
-    uint8_t sync_word = 0x12; // Private SX1262
-    int8_t power = 22; // up to 22 dBm for SX1262
-    uint16_t preamble_length = 16;
+constexpr struct
+{
+  float center_freq = 915.000'000f; // MHz
+  float bandwidth = 125.f;          // kHz
+  uint8_t spreading_factor = 12;    // SF: 6 to 12
+  uint8_t coding_rate = 8;          // CR: 5 to 8
+  uint8_t sync_word = 0x12;         // Private SX1262
+  int8_t power = 22;                // up to 22 dBm for SX1262
+  uint16_t preamble_length = 16;
 } params;
 
-// SX1262 pin connections (adjust pins for your board)
-#define LORA_DIO1 PB0
-#define LORA_NSS  PA4
-#define LORA_BUSY PB1
-#define LORA_NRST  PB2
-
-// Initialize SX1262 module
 SX1262 lora = new Module(LORA_NSS, LORA_DIO1, LORA_NRST, LORA_BUSY, spi1, lora_spi_settings);
+
+// ICM
+ICM42688 icm(spi1, PA15);
 
 struct Data
 {
+  // 40 bits
   uint32_t timestamp;
+  uint8_t counter;
 
+  // 160 bits
   double gps_latitude;
   double gps_longitude;
   float gps_altitude;
 
+  // 96 bits
   float temp;
   float humid;
   float press;
-  float press_altitude;
 
+  // 192 bits
   float acc_x;
   float acc_y;
   float acc_z;
@@ -92,36 +98,86 @@ struct Data
 Data data;
 SemaphoreHandle_t i2cMutex;
 
+// Communication data
+String constructed_data;
+
 extern void read_m10q(void *);
 
 extern void read_bme(void *);
 
 extern void read_icm(void *);
 
+extern void construct_data(void *);
+
+extern void send_data(void *);
+
+extern void save_data(void *);
+
 extern void print_data(void *);
 
 extern void buzz(void *);
 
+extern void set_tx_flag();
+
 void setup()
 {
   Serial.begin(460800);
+  delay(2000);
 
-  Wire.begin();
   i2c3.begin();
   Wire.setClock(300000u);
 
+  spi1.begin();
+
   i2cMutex = xSemaphoreCreateMutex();
 
+  // GPIO
   pinMode(PA0, OUTPUT);
+  pinMode(PB5, OUTPUT);
 
-  // m10q (0x42)
-  if (m10q.begin(0x42, UBLOX_CUSTOM_MAX_WAIT))
+  // variable
+  static bool state;
+
+  // SD
+  state = sd.begin(sd_config);
+  Serial.printf("SD CARD: %s\n", state ? "SUCCESS" : "FAILED");
+  if (!state)
+    while (true)
+      ;
+  if (!file.open("data.csv", O_RDWR | O_CREAT | O_AT_END))
   {
-    m10q.setI2COutput(COM_TYPE_UBX, VAL_LAYER_RAM_BBR, UBLOX_CUSTOM_MAX_WAIT);
-    m10q.setNavigationFrequency(5, VAL_LAYER_RAM_BBR, UBLOX_CUSTOM_MAX_WAIT);
-    m10q.setAutoPVT(true, VAL_LAYER_RAM_BBR, UBLOX_CUSTOM_MAX_WAIT);
-    m10q.setDynamicModel(DYN_MODEL_AUTOMOTIVE, VAL_LAYER_RAM_BBR, UBLOX_CUSTOM_MAX_WAIT);
+    Serial.println("File open failed!");
+    return;
   }
+
+  // LoRa
+  int16_t ls = lora.begin(params.center_freq,
+                          params.bandwidth,
+                          params.spreading_factor,
+                          params.coding_rate,
+                          params.sync_word,
+                          params.power,
+                          params.preamble_length,
+                          0,
+                          false);
+  state = state || lora.explicitHeader();
+  state = state || lora.setCRC(true);
+  state = state || lora.autoLDRO();
+  attachInterrupt(LORA_DIO1, set_tx_flag, CHANGE);
+
+  if (ls == RADIOLIB_ERR_NONE)
+  {
+    Serial.println("SX1262 initialized successfully!");
+  }
+  else
+  {
+    Serial.print("Initialization failed! Error: ");
+    Serial.println(ls);
+    while (true)
+      ;
+  }
+
+  s.reserve(256);
 
   // icm42688
   uint8_t status = icm.begin();
@@ -132,26 +188,32 @@ void setup()
     icm.setAccelODR(ICM42688::odr12_5);
     icm.setGyroODR(ICM42688::odr12_5);
   }
+  Serial.print("ICM Status: ");
+  Serial.println(status);
 
-  if (!bme.begin(0x76, &Wire))
+  // m10q (0x42)
+  if (m10q.begin(0x42, UBLOX_CUSTOM_MAX_WAIT))
+  {
+    m10q.setI2COutput(COM_TYPE_UBX, VAL_LAYER_RAM_BBR, UBLOX_CUSTOM_MAX_WAIT);
+    m10q.setNavigationFrequency(5, VAL_LAYER_RAM_BBR, UBLOX_CUSTOM_MAX_WAIT);
+    m10q.setAutoPVT(true, VAL_LAYER_RAM_BBR, UBLOX_CUSTOM_MAX_WAIT);
+    m10q.setDynamicModel(DYN_MODEL_AUTOMOTIVE, VAL_LAYER_RAM_BBR, UBLOX_CUSTOM_MAX_WAIT);
+  }
+
+  // bme280(0x76)
+  if (!bme.begin(0x76, &i2c3))
   {
     Serial.println("Could not find a valid BME280 sensor");
   }
 
-  
-  // valid.sd0 = sd0.begin(SdSpiConfig(PIN_SPI_CS_SD_INT, DEDICATED_SPI, SD_SCK_MHZ(SPI_SPEED_SD_MHZ), &SPI_SD));
-  // if (valid.sd0)
-  // {
-  //   make_new_filename(sd0, sd0_filename, F_NAME, F_EXT);
-  //   open_for_append(sd0, sd0_file, sd0_filename);
-  // }
-  
-
   xTaskCreate(read_m10q, "", 2048, nullptr, 2, nullptr);
   xTaskCreate(read_bme, "", 2048, nullptr, 2, nullptr);
   xTaskCreate(read_icm, "", 2048, nullptr, 2, nullptr);
-  xTaskCreate(print_data, "", 2048, nullptr, 2, nullptr);
-  xTaskCreate(buzz, "", 2048, nullptr, 2, nullptr);
+  xTaskCreate(construct_data, "", 2048, nullptr, 2, nullptr);
+  xTaskCreate(send_data, "", 2048, nullptr, 2, nullptr);
+  xTaskCreate(save_data, "", 2048, nullptr, 2, nullptr);
+  xTaskCreate(print_data, "", 1024, nullptr, 2, nullptr);
+  xTaskCreate(buzz, "", 1024, nullptr, 2, nullptr);
   vTaskStartScheduler();
 }
 
@@ -159,7 +221,6 @@ void buzz(void *)
 {
   for (;;)
   {
-    Serial.println("Hello");
     digitalToggle(PA0);
     DELAY(500);
   }
@@ -203,8 +264,6 @@ void read_icm(void *)
 {
   for (;;)
   {
-    dataReady = false;
-
     icm.getAGT();
     // acceleration
     data.acc_x = icm.accX();
@@ -219,10 +278,70 @@ void read_icm(void *)
   }
 }
 
-void uplink(void *)
+void construct_data(void *)
 {
   for (;;)
   {
+    constructed_data = "";
+    csv_stream_crlf(constructed_data)
+        << "<1>"
+        << data.timestamp
+        << data.counter
+        << data.gps_latitude
+        << data.gps_longitude
+        << data.gps_altitude
+        << data.temp
+        << data.humid
+        << data.press
+        << data.acc_x
+        << data.acc_y
+        << data.gyro_x
+        << data.gyro_y
+        << data.gyro_z;
+    DELAY(1000);
+  }
+}
+
+void send_data(void *)
+{
+  for (;;)
+  {
+    static int16_t state;
+    static uint32_t t0, t;
+
+    if (tx_flag)
+    {
+      tx_flag = false;
+      t = millis();
+
+      if (state == RADIOLIB_ERR_NONE)
+      {
+        Serial.println("Transmission successful!");
+        Serial.printf("Used %d ms\n", t - t0);
+      }
+      else
+      {
+        Serial.print("Transmission failed! Error: ");
+        Serial.println(state);
+      }
+    }
+    else
+    {
+      lora.startTransmit(constructed_data.c_str());
+      t0 = millis();
+    }
+    DELAY(2500);
+  }
+}
+
+void save_data(void *)
+{
+  for (;;)
+  {
+    file.println(constructed_data);
+    file.flush();
+    Serial.println("Data written and flushed.");
+    DELAY(1000);
   }
 }
 
@@ -247,8 +366,6 @@ void print_data(void *)
     Serial.println(data.humid);
     Serial.print("Pressure: ");
     Serial.println(data.press);
-    Serial.print("Pressure Altitude: ");
-    Serial.println(data.press_altitude);
 
     Serial.print("Acc X: ");
     Serial.println(data.acc_x);
@@ -262,7 +379,15 @@ void print_data(void *)
     Serial.println(data.gyro_y);
     Serial.print("Gyro Z: ");
     Serial.println(data.gyro_z);
+    Serial.print(constructed_data);
+    DELAY(1000);
   }
+}
+
+void set_tx_flag()
+{
+  tx_flag = true;
+  digitalToggle(PB5);
 }
 
 void loop()
