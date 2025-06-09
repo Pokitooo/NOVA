@@ -18,7 +18,8 @@
 #define SPI_SPEED_SD_MHZ (20)
 
 #define DELAY(MS) vTaskDelay(pdMS_TO_TICKS(MS))
-// #define SEALEVELPRESSURE_HPA (1013.25)
+
+bool validm10q;
 
 // Pins defination
 #define PIN_SPI_MOSI1 PA7
@@ -56,7 +57,7 @@ SPISettings lora_spi_settings(18'000'000, MSBFIRST, SPI_MODE0);
 
 constexpr struct
 {
-  float center_freq = 915.000'000f; // MHz
+  float center_freq = 920.800'000f; // MHz
   float bandwidth = 125.f;          // kHz
   uint8_t spreading_factor = 12;    // SF: 6 to 12
   uint8_t coding_rate = 8;          // CR: 5 to 8
@@ -101,6 +102,11 @@ SemaphoreHandle_t i2cMutex;
 // Communication data
 String constructed_data;
 
+// Buzzer
+const unsigned long threeHours = 10800000; // 3 hours in milliseconds
+unsigned long startTime;
+#define buzzerPin PA0
+
 extern void read_m10q(void *);
 
 extern void read_bme(void *);
@@ -125,15 +131,18 @@ void setup()
   delay(2000);
 
   i2c3.begin();
-  Wire.setClock(300000u);
+  i2c3.setClock(300000u);
 
   spi1.begin();
 
   i2cMutex = xSemaphoreCreateMutex();
 
   // GPIO
-  pinMode(PA0, OUTPUT);
-  pinMode(PB5, OUTPUT);
+  pinMode(buzzerPin, OUTPUT); // BUZZER
+  digitalWrite(buzzerPin, 1);
+  delay(100);
+  digitalWrite(buzzerPin, 0);
+  pinMode(PB5, OUTPUT); // LED
 
   // variable
   static bool state;
@@ -192,12 +201,16 @@ void setup()
   Serial.println(status);
 
   // m10q (0x42)
-  if (m10q.begin(0x42, UBLOX_CUSTOM_MAX_WAIT))
+  validm10q = m10q.begin(i2c3);
+  if (validm10q)
   {
     m10q.setI2COutput(COM_TYPE_UBX, VAL_LAYER_RAM_BBR, UBLOX_CUSTOM_MAX_WAIT);
-    m10q.setNavigationFrequency(5, VAL_LAYER_RAM_BBR, UBLOX_CUSTOM_MAX_WAIT);
+    m10q.setNavigationFrequency(25, VAL_LAYER_RAM_BBR, UBLOX_CUSTOM_MAX_WAIT);
     m10q.setAutoPVT(true, VAL_LAYER_RAM_BBR, UBLOX_CUSTOM_MAX_WAIT);
-    m10q.setDynamicModel(DYN_MODEL_AUTOMOTIVE, VAL_LAYER_RAM_BBR, UBLOX_CUSTOM_MAX_WAIT);
+    m10q.setDynamicModel(DYN_MODEL_AIRBORNE4g, VAL_LAYER_RAM_BBR, UBLOX_CUSTOM_MAX_WAIT);
+  }
+  else{
+    Serial.println("gps Failed");
   }
 
   // bme280(0x76)
@@ -221,8 +234,14 @@ void buzz(void *)
 {
   for (;;)
   {
-    digitalToggle(PA0);
-    DELAY(500);
+    unsigned long currentTime = millis();
+
+    if (currentTime - startTime >= threeHours)
+    {
+      digitalToggle(buzzerPin);
+      digitalToggle(PB5);
+      DELAY(500);
+    }
   }
 }
 
@@ -284,17 +303,18 @@ void construct_data(void *)
   {
     constructed_data = "";
     csv_stream_crlf(constructed_data)
-        << "<1>"
-        << data.timestamp
+        << "<2>"
         << data.counter
-        << data.gps_latitude
-        << data.gps_longitude
-        << data.gps_altitude
+        << data.timestamp
+        << String(data.gps_latitude, 6)
+        << String(data.gps_longitude, 6)
+        << String(data.gps_altitude, 4)
         << data.temp
         << data.humid
         << data.press
         << data.acc_x
         << data.acc_y
+        << data.acc_z
         << data.gyro_x
         << data.gyro_y
         << data.gyro_z;
@@ -330,7 +350,8 @@ void send_data(void *)
       lora.startTransmit(constructed_data.c_str());
       t0 = millis();
     }
-    DELAY(2500);
+    DELAY(2000);
+    ++data.counter;
   }
 }
 
@@ -380,7 +401,7 @@ void print_data(void *)
     Serial.print("Gyro Z: ");
     Serial.println(data.gyro_z);
     Serial.print(constructed_data);
-    DELAY(1000);
+    DELAY(500);
   }
 }
 

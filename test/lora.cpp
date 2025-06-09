@@ -9,18 +9,8 @@
 #define DELAY_MS(MS) delay(MS)
 #endif
 
-// NSS
-constexpr uint32_t NSS_SD = PB9;
-
 // SPI
 SPIClass spi1(PA7, PA6, PA5);
-
-// SD Config
-SdSpiConfig sd_config(NSS_SD, SHARED_SPI,SD_SCK_MHZ(25), &spi1);
-
-// SD
-SdExFat sd = {};
-ExFile file = {};
 
 // LoRa data
 volatile bool tx_flag = false;
@@ -41,10 +31,10 @@ constexpr struct {
 } params;
 
 // SX1262 pin connections (adjust pins for your board)
-#define LORA_DIO1 PB0
-#define LORA_NSS  PA4
-#define LORA_BUSY PB1
-#define LORA_NRST  PB2
+#define LORA_DIO1 PA1
+#define LORA_NSS  PA2
+#define LORA_BUSY PA3
+#define LORA_NRST PA4
 
 // Initialize SX1262 module
 SX1262 lora = new Module(LORA_NSS, LORA_DIO1, LORA_NRST, LORA_BUSY, spi1, lora_spi_settings);
@@ -62,10 +52,6 @@ void setup() {
 
     delay(2000);
     Serial.println("Hi!");
-
-    state = sd.begin(sd_config);
-    Serial.printf("SD CARD: %s\n", state ? "SUCCESS" : "FAILED");
-    if (!state) while (true);
 
     int16_t ls = lora.begin(params.center_freq,
                             params.bandwidth,
@@ -93,28 +79,7 @@ void setup() {
 }
 
 void loop() {
-    // ส่งทุกๆ 5 วิ ขั้นต่ำ, recommend 10 วิ
-    static xcore::nonblocking_delay<uint32_t> nb(5'000, millis);
-    static int16_t state;
-    static uint32_t t0, t;
-
-    if (tx_flag) {
-        tx_flag = false;
-        t = millis();
-
-        if (state == RADIOLIB_ERR_NONE) {
-            Serial.println("Transmission successful!");
-            Serial.printf("Used %d ms\n", t - t0);
-        } else {
-            Serial.print("Transmission failed! Error: ");
-            Serial.println(state);
-        }
-
-        lora.finishTransmit();
-    } else if (nb) {
-        Serial.println("Transmitting packet...");
-        s = "NOVA,13.000000,100.000000,25490,13.000000,100.000000,25490\n";
-        state = lora.startTransmit(s.c_str());
-        t0 = millis();
-    }
+    String re;
+    re = lora.read();
+    Serial.println(re);
 }
