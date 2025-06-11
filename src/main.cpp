@@ -153,10 +153,13 @@ void setup()
   if (!state)
     while (true)
       ;
-  if (!file.open("data.csv", O_RDWR | O_CREAT | O_AT_END))
+  if (file = sd.open("data.csv", O_RDWR | O_CREAT | O_AT_END | O_APPEND))
+  {
+    Serial.println("File open Success!");
+  }
+  else
   {
     Serial.println("File open failed!");
-    return;
   }
 
   // LoRa
@@ -209,7 +212,8 @@ void setup()
     m10q.setAutoPVT(true, VAL_LAYER_RAM_BBR, UBLOX_CUSTOM_MAX_WAIT);
     m10q.setDynamicModel(DYN_MODEL_AIRBORNE4g, VAL_LAYER_RAM_BBR, UBLOX_CUSTOM_MAX_WAIT);
   }
-  else{
+  else
+  {
     Serial.println("gps Failed");
   }
 
@@ -303,7 +307,7 @@ void construct_data(void *)
   {
     constructed_data = "";
     csv_stream_crlf(constructed_data)
-        << "<2>"
+        << "<1>"
         << data.counter
         << data.timestamp
         << String(data.gps_latitude, 6)
