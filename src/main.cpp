@@ -19,8 +19,6 @@
 
 #define DELAY(MS) vTaskDelay(pdMS_TO_TICKS(MS))
 
-bool validm10q;
-
 // Pins defination
 #define PIN_SPI_MOSI1 PA7
 #define PIN_SPI_MISO1 PA6
@@ -199,22 +197,19 @@ void setup()
     icm.setGyroFS(ICM42688::dps500);
     icm.setAccelODR(ICM42688::odr12_5);
     icm.setGyroODR(ICM42688::odr12_5);
+    Serial.println("ICM Success");
   }
   Serial.print("ICM Status: ");
   Serial.println(status);
 
   // m10q (0x42)
-  validm10q = m10q.begin(i2c3);
-  if (validm10q)
+  if (m10q.begin(i2c3))
   {
     m10q.setI2COutput(COM_TYPE_UBX, VAL_LAYER_RAM_BBR, UBLOX_CUSTOM_MAX_WAIT);
     m10q.setNavigationFrequency(25, VAL_LAYER_RAM_BBR, UBLOX_CUSTOM_MAX_WAIT);
     m10q.setAutoPVT(true, VAL_LAYER_RAM_BBR, UBLOX_CUSTOM_MAX_WAIT);
     m10q.setDynamicModel(DYN_MODEL_AIRBORNE4g, VAL_LAYER_RAM_BBR, UBLOX_CUSTOM_MAX_WAIT);
-  }
-  else
-  {
-    Serial.println("gps Failed");
+    Serial.println("gps Success");
   }
 
   // bme280(0x76)
