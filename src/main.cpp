@@ -69,6 +69,10 @@ SX1262 lora = new Module(LORA_NSS, LORA_DIO1, LORA_NRST, LORA_BUSY, spi1, lora_s
 // ICM
 ICM42688 icm(spi1, PA15);
 
+// GPIO
+const uint16_t buzzerPin = PA0;
+const uint16_t ledPin = PB5;
+
 struct Data
 {
   // 40 bits
@@ -99,11 +103,6 @@ SemaphoreHandle_t i2cMutex;
 
 // Communication data
 String constructed_data;
-
-// Buzzer
-const unsigned long threeHours = 10800000; // 3 hours in milliseconds
-unsigned long startTime;
-#define buzzerPin PA0
 
 extern void read_m10q(void *);
 
@@ -140,7 +139,7 @@ void setup()
   digitalWrite(buzzerPin, 1);
   delay(100);
   digitalWrite(buzzerPin, 0);
-  pinMode(PB5, OUTPUT); // LED
+  pinMode(ledPin, OUTPUT); // LED
 
   // variable
   static bool state;
@@ -233,14 +232,9 @@ void buzz(void *)
 {
   for (;;)
   {
-    unsigned long currentTime = millis();
-
-    if (currentTime - startTime >= threeHours)
-    {
-      digitalToggle(buzzerPin);
-      digitalToggle(PB5);
-      DELAY(500);
-    }
+    digitalToggle(buzzerPin);
+    digitalToggle(ledPin);
+    DELAY(500);
   }
 }
 
@@ -407,7 +401,6 @@ void print_data(void *)
 void set_tx_flag()
 {
   tx_flag = true;
-  digitalToggle(PB5);
 }
 
 void loop()
