@@ -5,7 +5,8 @@
 #include <Wire.h>
 #include <SPI.h>
 
-#include <SparkFun_u-blox_GNSS_v3.h>
+// #include <SparkFun_u-blox_GNSS_v3.h>
+#include <TinyGPS++.h>
 #include "ICM42688.h"
 #include <Adafruit_BME280.h>
 
@@ -19,7 +20,11 @@
 
 #define DELAY(MS) vTaskDelay(pdMS_TO_TICKS(MS))
 
+#define SEALEVELPRESSURE_HPA (1013.25)
+
 // Pins defination
+
+// SPI
 #define PIN_SPI_MOSI1 PA7
 #define PIN_SPI_MISO1 PA6
 #define PIN_SPI_SCK1 PA5
@@ -28,16 +33,35 @@
 #define PIN_NSS_ICM PA15
 #define PIN_NSS_SD PB9
 
-// lORA PIN DEF
+// LORA
 #define LORA_DIO1 PB0
 #define LORA_NSS PA4
 #define LORA_BUSY PB1
 #define LORA_NRST PB2
 
+// UARTS
+constexpr uint16_t PIN_RX = PB7;
+constexpr uint16_t PIN_TX = PB6;
+
 // i2c
-TwoWire i2c3(PB8, PA8);
-SFE_UBLOX_GNSS m10q;
+constexpr uint16_t PIN_SDA = PB8;
+constexpr uint16_t PIN_SCL = PA8;
+
+// GPIO
+constexpr uint16_t buzzerPin = PA0;
+constexpr uint16_t ledPin = PB5;
+
+// CURRENT ADC
+constexpr uint16_t VOUT_EXT = PB1;
+constexpr uint16_t VOUT_Servo = PA3;
+
+// i2c
+TwoWire i2c3(PIN_SDA, PIN_SCL);
 Adafruit_BME280 bme;
+
+// UARTS
+HardwareSerial gnssSerial(PIN_RX, PIN_TX);
+TinyGPSPlus lc86;
 
 // SPI
 SPIClass spi1(PIN_SPI_MOSI1, PIN_SPI_MISO1, PIN_SPI_SCK1);
@@ -67,11 +91,13 @@ constexpr struct
 SX1262 lora = new Module(LORA_NSS, LORA_DIO1, LORA_NRST, LORA_BUSY, spi1, lora_spi_settings);
 
 // ICM
-ICM42688 icm(spi1, PA15);
+ICM42688 icm(spi1, PIN_NSS_ICM);
 
-// GPIO
-const uint16_t buzzerPin = PA0;
-const uint16_t ledPin = PB5;
+// ADC
+constexpr size_t ADC_BITS(12);
+constexpr float ADC_DIVIDER = ((1 << ADC_BITS) - 1);
+constexpr float VREF = 3300;
+float voltageServo, volatgeEXT = 0.F;
 
 struct Data
 {
@@ -85,6 +111,7 @@ struct Data
   float gps_altitude;
 
   // 96 bits
+  float altitude;
   float temp;
   float humid;
   float press;
@@ -99,16 +126,17 @@ struct Data
 };
 
 Data data;
-SemaphoreHandle_t i2cMutex;
 
 // Communication data
 String constructed_data;
 
-extern void read_m10q(void *);
+extern void read_gnss(void *);
 
 extern void read_bme(void *);
 
 extern void read_icm(void *);
+
+extern void read_current(void *);
 
 extern void construct_data(void *);
 
@@ -131,8 +159,6 @@ void setup()
   i2c3.setClock(300000u);
 
   spi1.begin();
-
-  i2cMutex = xSemaphoreCreateMutex();
 
   // GPIO
   pinMode(buzzerPin, OUTPUT); // BUZZER
@@ -201,25 +227,22 @@ void setup()
   Serial.print("ICM Status: ");
   Serial.println(status);
 
-  // m10q (0x42)
-  if (m10q.begin(i2c3))
-  {
-    m10q.setI2COutput(COM_TYPE_UBX, VAL_LAYER_RAM_BBR, UBLOX_CUSTOM_MAX_WAIT);
-    m10q.setNavigationFrequency(25, VAL_LAYER_RAM_BBR, UBLOX_CUSTOM_MAX_WAIT);
-    m10q.setAutoPVT(true, VAL_LAYER_RAM_BBR, UBLOX_CUSTOM_MAX_WAIT);
-    m10q.setDynamicModel(DYN_MODEL_AIRBORNE4g, VAL_LAYER_RAM_BBR, UBLOX_CUSTOM_MAX_WAIT);
-    Serial.println("gps Success");
-  }
+  // lc86g UARTS
+  gnssSerial.begin(115200);
 
   // bme280(0x76)
   if (!bme.begin(0x76, &i2c3))
   {
     Serial.println("Could not find a valid BME280 sensor");
   }
+  
+  // ADC
+  analogReadResolution(ADC_BITS);
 
-  xTaskCreate(read_m10q, "", 2048, nullptr, 2, nullptr);
+  xTaskCreate(read_gnss, "", 2048, nullptr, 2, nullptr);
   xTaskCreate(read_bme, "", 2048, nullptr, 2, nullptr);
   xTaskCreate(read_icm, "", 2048, nullptr, 2, nullptr);
+  xTaskCreate(read_current, "", 2048, nullptr, 2, nullptr);
   xTaskCreate(construct_data, "", 2048, nullptr, 2, nullptr);
   xTaskCreate(send_data, "", 2048, nullptr, 2, nullptr);
   xTaskCreate(save_data, "", 2048, nullptr, 2, nullptr);
@@ -238,20 +261,21 @@ void buzz(void *)
   }
 }
 
-void read_m10q(void *)
+void read_gnss(void *)
 {
   for (;;)
   {
-    if (xSemaphoreTake(i2cMutex, portMAX_DELAY) == pdTRUE)
+    while (gnssSerial.available())
     {
-      if (m10q.getPVT())
-      {
-        data.timestamp = m10q.getUnixEpoch(UBLOX_CUSTOM_MAX_WAIT);
-        data.gps_latitude = static_cast<double>(m10q.getLatitude(UBLOX_CUSTOM_MAX_WAIT)) * 1.e-7;
-        data.gps_longitude = static_cast<double>(m10q.getLongitude(UBLOX_CUSTOM_MAX_WAIT)) * 1.e-7;
-        data.gps_altitude = static_cast<float>(m10q.getAltitudeMSL(UBLOX_CUSTOM_MAX_WAIT)) * 1.e-3f;
-      }
-      xSemaphoreGive(i2cMutex);
+      lc86.encode(gnssSerial.read());
+    }
+
+    if (lc86.location.isUpdated())
+    {
+      data.timestamp = lc86.time.value();
+      data.gps_latitude = lc86.location.lat();
+      data.gps_longitude = lc86.location.lng();
+      data.gps_altitude = lc86.altitude.meters();
     }
     DELAY(500);
   }
@@ -261,13 +285,10 @@ void read_bme(void *)
 {
   for (;;)
   {
-    if (xSemaphoreTake(i2cMutex, portMAX_DELAY) == pdTRUE)
-    {
-      data.temp = bme.readTemperature();
-      data.humid = bme.readHumidity();
-      data.press = bme.readPressure() / 100.0F;
-      xSemaphoreGive(i2cMutex);
-    }
+    data.temp = bme.readTemperature();
+    data.humid = bme.readHumidity();
+    data.press = bme.readPressure() / 100.0F;
+    data.altitude = bme.readAltitude(SEALEVELPRESSURE_HPA);
     DELAY(200);
   }
 }
@@ -290,6 +311,13 @@ void read_icm(void *)
   }
 }
 
+void read_current(void *)
+{
+  for(;;){
+    voltageServo = analogRead(digitalPinToAnalogInput(VOUT_Servo)) / ADC_DIVIDER * VREF;
+  }
+}
+
 void construct_data(void *)
 {
   for (;;)
@@ -301,7 +329,7 @@ void construct_data(void *)
         << data.timestamp
         << String(data.gps_latitude, 6)
         << String(data.gps_longitude, 6)
-        << String(data.gps_altitude, 4)
+        << String(data.altitude, 4)
         << data.temp
         << data.humid
         << data.press
