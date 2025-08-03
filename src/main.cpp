@@ -239,6 +239,7 @@ void setup()
   // ADC
   analogReadResolution(ADC_BITS);
 
+  // Scheduler
   xTaskCreate(read_gnss, "", 2048, nullptr, 2, nullptr);
   xTaskCreate(read_bme, "", 2048, nullptr, 2, nullptr);
   xTaskCreate(read_icm, "", 2048, nullptr, 2, nullptr);
