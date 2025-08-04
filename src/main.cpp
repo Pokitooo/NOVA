@@ -1,6 +1,9 @@
 #include <Arduino.h>
 #include <lib_xcore>
 #include <STM32FreeRTOS.h>
+#include "vt_linalg"
+#include "vt_kalman"
+#include "Arduino_Extended.h"
 
 #include <Wire.h>
 #include <SPI.h>
@@ -13,14 +16,7 @@
 #include "SdFat.h"
 #include "RadioLib.h"
 
-#include "Arduino_Extended.h"
-
-#define UBLOX_CUSTOM_MAX_WAIT (250u)
-#define SPI_SPEED_SD_MHZ (20)
-
-#define DELAY(MS) vTaskDelay(pdMS_TO_TICKS(MS))
-
-#define SEALEVELPRESSURE_HPA (1013.25)
+#include "nova_peripheral_def.h"
 
 // Pins defination
 
@@ -57,7 +53,7 @@ constexpr uint16_t VOUT_Servo = PA3;
 
 // i2c
 TwoWire i2c3(PIN_SDA, PIN_SCL);
-Adafruit_BME280 bme;
+Adafruit_BME280 bme1;
 
 // UARTS
 HardwareSerial gnssSerial(PIN_RX, PIN_TX);
@@ -68,8 +64,8 @@ SPIClass spi1(PIN_SPI_MOSI1, PIN_SPI_MISO1, PIN_SPI_SCK1);
 
 // SD
 SdSpiConfig sd_config(PIN_NSS_SD, SHARED_SPI, SD_SCK_MHZ(25), &spi1);
-SdExFat sd = {};
-ExFile file = {};
+SdExFat sd;
+ExFile file;
 
 // LoRa
 volatile bool tx_flag = false;
@@ -99,6 +95,7 @@ constexpr float ADC_DIVIDER = ((1 << ADC_BITS) - 1);
 constexpr float VREF = 3300;
 float voltageServo, volatgeEXT = 0.F;
 
+// DATA
 struct Data
 {
   // 40 bits
@@ -116,16 +113,57 @@ struct Data
   float humid;
   float press;
 
-  // 192 bits
-  float acc_x;
-  float acc_y;
-  float acc_z;
-  float gyro_x;
-  float gyro_y;
-  float gyro_z;
+  // 384 bits
+  struct
+  {
+    vec3_u<double> acc;
+    vec3_u<double> gyro;
+  } imu;
+
+} data;
+
+// Software filters
+constexpr size_t FILTER_ORDER = 4;
+constexpr double dt_base = 0.1;
+constexpr double covariance = 0.01;
+constexpr double alpha = 0.;
+constexpr double beta = 0.;
+
+struct software_filters
+{
+  vt::kf_pos<FILTER_ORDER> bme_pres{dt_base, covariance, alpha, beta};
+
+  struct
+  {
+    vec3_u<vt::kf_pos<4>> acc{dt_base, covariance, alpha, beta};
+    vec3_u<vt::kf_pos<4>> gyro{dt_base, covariance, alpha, beta};
+  } imu_1;
+
+  vt::kf_pos<FILTER_ORDER> altitude{dt_base, covariance, alpha, beta};
+  vt::kf_acc<FILTER_ORDER> acceleration{dt_base, covariance, alpha, beta};
+} filters;
+
+struct bme_ref_t
+{
+  Adafruit_BME280 &bmef;
+  float &temp;
+  float &pres;
+  float &alt;
+  vt::kf_pos<FILTER_ORDER> &kf;
+
+  bme_ref_t(Adafruit_BME280 &t_bmef, float &t_temp, float &t_pres, float &t_alt, vt::kf_pos<FILTER_ORDER> &t_kf)
+      : bmef{t_bmef}, temp{t_temp}, pres{t_pres}, alt{t_alt}, kf{t_kf} {}
 };
 
-Data data;
+bme_ref_t bme_ref = {bme1, data.temp, data.press, data.altitude, filters.bme_pres};
+
+// Software control
+struct
+{
+  float altitude{};
+  float altitude_offset{};
+  vec3_u<double> acc;
+} ground_truth;
 
 // Communication data
 String constructed_data;
@@ -231,11 +269,11 @@ void setup()
   gnssSerial.begin(115200);
 
   // bme280(0x76)
-  if (!bme.begin(0x76, &i2c3))
+  if (!bme1.begin(0x76, &i2c3))
   {
     Serial.println("Could not find a valid BME280 sensor");
   }
-  
+
   // ADC
   analogReadResolution(ADC_BITS);
 
@@ -286,35 +324,68 @@ void read_bme(void *)
 {
   for (;;)
   {
-    data.temp = bme.readTemperature();
-    data.humid = bme.readHumidity();
-    data.press = bme.readPressure() / 100.0F;
-    data.altitude = bme.readAltitude(SEALEVELPRESSURE_HPA);
+    readBme(&bme_ref);
+    data.humid = bme1.readHumidity();
     DELAY(200);
   }
+}
+
+void readBme(bme_ref_t *bme)
+{
+  static uint32_t t_prev = millis();
+
+  if (const float t = bme1.readTemperature(); t > 0.)
+  {
+    bme->temp = t;
+  }
+
+  if (const float p = bme1.readPressure() / 100.0F; p > 0.)
+  {
+    bme->kf.update_dt(millis() - t_prev);
+    bme->kf.kf.predict().update(p);
+    bme->pres = static_cast<float>(bme->kf.kf.state);
+  }
+
+  bme->alt = pressure_altitude(bme->pres);
+
+  t_prev = millis();
 }
 
 void read_icm(void *)
 {
   for (;;)
   {
+    static uint32_t t_prev = millis();
+    
     icm.getAGT();
-    // acceleration
-    data.acc_x = icm.accX();
-    data.acc_y = icm.accY();
-    data.acc_z = icm.accZ();
 
-    // gyroscope
-    data.gyro_x = icm.gyrX();
-    data.gyro_y = icm.gyrY();
-    data.gyro_z = icm.gyrZ();
+    data.imu.acc.x = icm.accX();
+    data.imu.acc.y = icm.accY();
+    data.imu.acc.z = icm.accZ();
+    data.imu.gyro.x = icm.gyrX();
+    data.imu.gyro.y = icm.gyrY();
+    data.imu.gyro.z = icm.gyrZ();
+
+    for (size_t i = 0; i < 3; ++i)
+    {
+      const uint32_t dt = millis() - t_prev;
+      filters.imu_1.acc.values[i].update_dt(dt);
+      filters.imu_1.gyro.values[i].update_dt(dt);
+      filters.imu_1.acc.values[i].kf.predict().update(data.imu.acc.values[i]);
+      filters.imu_1.gyro.values[i].kf.predict().update(data.imu.gyro.values[i]);
+      data.imu.acc.values[i] = filters.imu_1.acc.values[i].kf.state;
+      data.imu.gyro.values[i] = filters.imu_1.gyro.values[i].kf.state;
+    }
+
+    t_prev = millis();
     DELAY(1000);
   }
 }
 
 void read_current(void *)
 {
-  for(;;){
+  for (;;)
+  {
     voltageServo = analogRead(digitalPinToAnalogInput(VOUT_Servo)) / ADC_DIVIDER * VREF;
   }
 }
@@ -334,12 +405,12 @@ void construct_data(void *)
         << data.temp
         << data.humid
         << data.press
-        << data.acc_x
-        << data.acc_y
-        << data.acc_z
-        << data.gyro_x
-        << data.gyro_y
-        << data.gyro_z;
+        << data.imu.acc.x
+        << data.imu.acc.y
+        << data.imu.acc.z
+        << data.imu.gyro.x
+        << data.imu.gyro.y
+        << data.imu.gyro.z;
     DELAY(1000);
   }
 }
@@ -392,39 +463,48 @@ void print_data(void *)
 {
   for (;;)
   {
-    Serial.println("===== Data Output =====");
     Serial.print("Timestamp: ");
     Serial.println(data.timestamp);
 
-    Serial.print("GPS Latitude: ");
-    Serial.println(data.gps_latitude, 6);
-    Serial.print("GPS Longitude: ");
-    Serial.println(data.gps_longitude, 6);
-    Serial.print("GPS Altitude: ");
-    Serial.println(data.gps_altitude);
+    Serial.print("Counter: ");
+    Serial.println(data.counter);
 
-    Serial.print("Env Temp: ");
+    Serial.println("---- GPS ----");
+    Serial.print("Latitude: ");
+    Serial.println(data.gps_latitude, 6); // Keep precision
+    Serial.print("Longitude: ");
+    Serial.println(data.gps_longitude, 6);
+    Serial.print("Altitude: ");
+    Serial.println(data.gps_altitude, 4);
+
+    Serial.println("---- ENV ----");
+    Serial.print("Altitude: ");
+    Serial.println(data.altitude); // Default precision (2)
+    Serial.print("Temperature: ");
     Serial.println(data.temp);
     Serial.print("Humidity: ");
     Serial.println(data.humid);
     Serial.print("Pressure: ");
     Serial.println(data.press);
 
-    Serial.print("Acc X: ");
-    Serial.println(data.acc_x);
-    Serial.print("Acc Y: ");
-    Serial.println(data.acc_y);
-    Serial.print("Acc Z: ");
-    Serial.println(data.acc_z);
-    Serial.print("Gyro X: ");
-    Serial.println(data.gyro_x);
-    Serial.print("Gyro Y: ");
-    Serial.println(data.gyro_y);
-    Serial.print("Gyro Z: ");
-    Serial.println(data.gyro_z);
-    Serial.print(constructed_data);
-    DELAY(500);
+    Serial.println("---- IMU ACC ----");
+    Serial.print("X: ");
+    Serial.print(data.imu.acc.x, 3); // Keep 3 decimal precision
+    Serial.print("  Y: ");
+    Serial.print(data.imu.acc.y, 3);
+    Serial.print("  Z: ");
+    Serial.println(data.imu.acc.z, 3);
+
+    Serial.println("---- IMU GYRO ----");
+    Serial.print("X: ");
+    Serial.print(data.imu.gyro.x, 3); // Keep 3 decimal precision
+    Serial.print("  Y: ");
+    Serial.print(data.imu.gyro.y, 3);
+    Serial.print("  Z: ");
+    Serial.println(data.imu.gyro.z, 3);
   }
+
+  DELAY(1000);
 }
 
 void set_tx_flag()
