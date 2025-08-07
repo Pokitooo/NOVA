@@ -9,7 +9,7 @@
 #include <Wire.h>
 #include <SPI.h>
 
-// #include <SparkFun_u-blox_GNSS_v3.h>
+#include <SparkFun_u-blox_GNSS_v3.h>
 #include <TinyGPS++.h>
 #include "ICM42688.h"
 #include <Adafruit_BME280.h>
@@ -23,10 +23,17 @@
 
 using time_type = uint32_t;
 using smart_delay = vt::smart_delay<time_type>;
+using on_off_timer = vt::on_off_timer<time_type>;
+
+on_off_timer::interval_params buzzer_intervals(nova::config::BUZZER_ON_INTERVAL,
+                                               nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_IDLE_INTERVAL));
+bool enable_buzzer = true;
 
 // i2c
 TwoWire i2c3(PIN_SDA, PIN_SCL);
 Adafruit_BME280 bme1;
+SFE_UBLOX_GNSS m10q;
+SemaphoreHandle_t i2cMutex;
 
 // UARTS
 HardwareSerial gnssSerial(PIN_RX, PIN_TX);
@@ -75,7 +82,7 @@ struct Data
   uint32_t timestamp;
   uint8_t counter;
 
-  nova::state_t  ps;
+  nova::state_t ps;
   nova::pyro_state_t pyro_a{};
   nova::pyro_state_t pyro_b{};
 
@@ -95,6 +102,9 @@ struct Data
     vec3_u<double> acc;
     vec3_u<double> gyro;
   } imu;
+
+  uint8_t last_ack{};
+  uint8_t last_nack{};
 
 } data;
 
@@ -134,7 +144,11 @@ struct bme_ref_t
 
 bme_ref_t bme_ref = {bme1, data.temp, data.press, data.altitude, filters.bme_pres};
 
+// State
+bool sdstate;
+
 // Software control
+bool launch_override = false;
 struct
 {
   float altitude_offset{};
@@ -142,6 +156,12 @@ struct
 
 // Communication data
 String constructed_data;
+time_type tx_interval = nova::config::TX_IDLE_INTERVAL;
+time_type log_interval = nova::config::LOG_IDLE_INTERVAL;
+
+HardwareTimer timer_buz(TIM3);
+
+extern void read_m10q(void *);
 
 extern void read_gnss(void *);
 
@@ -179,9 +199,12 @@ void setup()
 
   // GPIO
   pinMode(buzzerPin, OUTPUT); // BUZZER
-  digitalWrite(buzzerPin, 1);
-  delay(100);
-  digitalWrite(buzzerPin, 0);
+  timer_buz.setOverflow(nova::config::BUZZER_ON_INTERVAL * 1000, MICROSEC_FORMAT);
+  timer_buz.attachInterrupt([]
+                            {
+    gpio_write << io_function::pull_low(digitalPinToPinName(buzzerPin));
+    timer_buz.pause(); });
+  timer_buz.pause();
   pinMode(ledPin, OUTPUT); // LED
 
   // variable
@@ -196,6 +219,7 @@ void setup()
   if (file = sd.open("data.csv", O_RDWR | O_CREAT | O_AT_END | O_APPEND))
   {
     Serial.println("File open Success!");
+    sdstate = true;
   }
   else
   {
@@ -246,6 +270,19 @@ void setup()
 
   // lc86g UARTS
   gnssSerial.begin(115200);
+
+  // i2c
+  i2cMutex = xSemaphoreCreateMutex();
+
+  // m10q (0x42)
+  if (m10q.begin(i2c3))
+  {
+    m10q.setI2COutput(COM_TYPE_UBX, VAL_LAYER_RAM_BBR, nova::config::UBLOX_CUSTOM_MAX_WAIT);
+    m10q.setNavigationFrequency(25, VAL_LAYER_RAM_BBR, nova::config::UBLOX_CUSTOM_MAX_WAIT);
+    m10q.setAutoPVT(true, VAL_LAYER_RAM_BBR, nova::config::UBLOX_CUSTOM_MAX_WAIT);
+    m10q.setDynamicModel(DYN_MODEL_AIRBORNE4g, VAL_LAYER_RAM_BBR, nova::config::UBLOX_CUSTOM_MAX_WAIT);
+    Serial.println("gps Success");
+  }
 
   // bme280(0x76)
   float gnd = 0.f;
@@ -308,7 +345,7 @@ void setup()
   };
 
   // Scheduler
-  xTaskCreate(read_gnss, "", 2048, nullptr, 2, nullptr);
+  xTaskCreate(read_m10q, "", 2048, nullptr, 2, nullptr);
   xTaskCreate(read_bme, "", 2048, nullptr, 2, nullptr);
   xTaskCreate(read_icm, "", 2048, nullptr, 2, nullptr);
   xTaskCreate(synchronize_kf, "", 1024, nullptr, 2, nullptr);
@@ -325,8 +362,27 @@ void buzz(void *)
 {
   for (;;)
   {
-    digitalToggle(buzzerPin);
+    // digitalToggle(buzzerPin);
     digitalToggle(ledPin);
+    DELAY(500);
+  }
+}
+
+void read_m10q(void *)
+{
+  for (;;)
+  {
+    if (xSemaphoreTake(i2cMutex, portMAX_DELAY) == pdTRUE)
+    {
+      if (m10q.getPVT())
+      {
+        data.timestamp = m10q.getUnixEpoch(nova::config::UBLOX_CUSTOM_MAX_WAIT);
+        data.gps_latitude = static_cast<double>(m10q.getLatitude(nova::config::UBLOX_CUSTOM_MAX_WAIT)) * 1.e-7;
+        data.gps_longitude = static_cast<double>(m10q.getLongitude(nova::config::UBLOX_CUSTOM_MAX_WAIT)) * 1.e-7;
+        data.gps_altitude = static_cast<float>(m10q.getAltitudeMSL(nova::config::UBLOX_CUSTOM_MAX_WAIT)) * 1.e-3f;
+      }
+      xSemaphoreGive(i2cMutex);
+    }
     DELAY(500);
   }
 }
@@ -355,8 +411,12 @@ void read_bme(void *)
 {
   for (;;)
   {
-    readBme(&bme_ref);
-    DELAY(100);
+    if (xSemaphoreTake(i2cMutex, portMAX_DELAY) == pdTRUE)
+    {
+      readBme(&bme_ref);
+      xSemaphoreGive(i2cMutex);
+    }
+    DELAY(200);
   }
 }
 
@@ -376,7 +436,7 @@ void readBme(bme_ref_t *bme)
     bme->pres = static_cast<float>(bme->kf.kf.state);
   }
 
-  bme->alt = pressure_altitude(bme->pres);
+  bme->alt = pressure_altitude(data.press);
 
   t_prev = millis();
 }
@@ -506,7 +566,155 @@ void save_data(void *)
   }
 }
 
-void fsm_eval()
+/*
+void accept_command(HardwareSerial *istream)
+{
+  Stream &stream = *istream; // Alias to istream
+
+  if (!stream.available())
+    return;
+  delay(20ul);
+
+  String rx_message = "";
+  rx_message.reserve(64);
+
+  while (stream.available())
+  {
+    rx_message += static_cast<char>(stream.read());
+  }
+
+  // Repeats for at least 5 times before continuing
+  if (rx_message.substring(0, 4) != "cmd ")
+  {
+    // Return if cmd header is invalid
+    ++data.last_nack;
+    return;
+  }
+
+  String command = rx_message.substring(4);
+  command.trim();
+
+  ++data.last_ack;
+
+  if (command == "ping" || command == "wake" || command == "on")
+  {
+    // <--- Maybe a wakeup command --->
+  }
+  else if (command == "arm")
+  {
+    // <--- Arming the rocket --->
+    data.ps = nova::state_t::ARMED;
+    tx_interval = nova::config::TX_ARMED_INTERVAL;
+    log_interval = nova::config::LOG_ARMED_INTERVAL;
+    data.pyro_a = nova::pyro_state_t::ARMED;
+    data.pyro_b = nova::pyro_state_t::ARMED;
+  }
+  else if (command == "disarm")
+  {
+    data.ps = nova::state_t::IDLE_SAFE;
+    tx_interval = nova::config::TX_IDLE_INTERVAL;
+    log_interval = nova::config::LOG_IDLE_INTERVAL;
+    data.pyro_a = nova::pyro_state_t::DISARMED;
+    data.pyro_b = nova::pyro_state_t::DISARMED;
+  }
+  else if (command == "pad")
+  {
+    // <--- Prelaunch operation --->
+    // Must be armed first!
+    if (data.ps == nova::state_t::ARMED)
+    {
+      data.ps = nova::state_t::PAD_PREOP;
+      tx_interval = nova::config::TX_PAD_PREOP_INTERVAL;
+      log_interval = nova::config::LOG_PAD_PREOP_INTERVAL;
+    }
+  }
+  else if (command == "manual-trigger-a")
+  {
+    if (data.ps != nova::state_t::IDLE_SAFE && data.ps != nova::state_t::RECOVERED_SAFE)
+    {
+      gpio_write << io_function::pull_high(nova::pins::pyro::SIG_A);
+      data.pyro_a = nova::pyro_state_t::FIRING;
+    }
+  }
+  else if (command == "manual-trigger-b")
+  {
+    if (data.ps != nova::state_t::IDLE_SAFE && data.ps != nova::state_t::RECOVERED_SAFE)
+    {
+      gpio_write << io_function::pull_high(nova::pins::pyro::SIG_B);
+      data.pyro_b = nova::pyro_state_t::FIRING;
+    }
+  }
+  else if (command == "launch-override")
+  {
+    launch_override = true;
+  }
+  else if (command == "recover")
+  {
+    // <--- Rocket landing confirmed --->
+    data.ps = nova::state_t::RECOVERED_SAFE;
+    if (data.pyro_a != nova::pyro_state_t::FIRED)
+      data.pyro_a = nova::pyro_state_t::DISARMED;
+    if (data.pyro_b != nova::pyro_state_t::FIRED)
+      data.pyro_b = nova::pyro_state_t::DISARMED;
+  }
+  else if (command == "zero")
+  {
+    // <--- Zero barometric altitude --->
+    readBme(&bme_ref);
+    ground_truth.altitude_offset = data.press;
+  }
+  else if (command == "sleep")
+  {
+    // <--- Put the device into deep sleep mode (power saving) --->
+    pwm_led.disable();
+    nova::pins::PINS_OFF();
+    nova::pins::SET_LED(nova::BLUE);
+    LowPower.deepSleep();
+    pwm_led.reset();
+  }
+  else if (command == "shutdown")
+  {
+    // <--- Shutdown the device --->
+    pwm_led.disable();
+    nova::pins::PINS_OFF();
+    nova::pins::SET_LED(nova::RED);
+
+    if (sdstate)
+    {
+      sd_util.close_one();
+    }
+    if (pvalid.flash)
+    {
+      flash_util.close_one();
+    }
+
+    LowPower.deepSleep();
+
+    __NVIC_SystemReset();
+  }
+  else if (command == "reboot" || command == "restart")
+  {
+    // <--- Reboot/reset the device --->
+    if (pvalid.sd)
+    {
+      sd_util.close_one();
+    }
+    if (pvalid.flash)
+    {
+      flash_util.close_one();
+    }
+    __NVIC_SystemReset();
+  }
+  else
+  {
+    // <--- Unknown command: send back nack --->
+    ++data.last_nack;
+    --data.last_ack;
+  }
+}
+*/
+
+void fsm_eval(void *)
 {
   static bool state_satisfaction = false;
   int32_t static launched_time = 0;
@@ -673,7 +881,7 @@ void fsm_eval()
 
     if (!fired)
     {
-      gpio_write << io_function::pull_high(nova::pins::pyro::SIG_A);
+      // gpio_write << io_function::pull_high(nova::pins::pyro::SIG_A); Change to servo
       data.pyro_a = nova::pyro_state_t::FIRING;
       fired = true;
     }
@@ -732,7 +940,7 @@ void fsm_eval()
 
     if (!fired)
     {
-      gpio_write << io_function::pull_high(nova::pins::pyro::SIG_B);
+      // gpio_write << io_function::pull_high(nova::pins::pyro::SIG_B); //Change to solenoid
       data.pyro_b = nova::pyro_state_t::FIRING;
       fired = true;
     }
@@ -822,8 +1030,6 @@ void print_data(void *)
     Serial.println(data.gps_altitude, 4);
 
     Serial.println("---- ENV ----");
-    Serial.print("Altitude: ");
-    Serial.println(data.altitude); // Default precision (2)
     Serial.print("Temperature: ");
     Serial.println(data.temp);
     Serial.print("ALtitude: ");
@@ -846,9 +1052,9 @@ void print_data(void *)
     Serial.print(data.imu.gyro.y, 3);
     Serial.print("  Z: ");
     Serial.println(data.imu.gyro.z, 3);
-  }
 
-  DELAY(1000);
+    DELAY(1000);
+  }
 }
 
 void set_tx_flag()

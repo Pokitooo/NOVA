@@ -35,4 +35,10 @@ constexpr uint16_t ledPin = PB5;
 constexpr uint16_t VOUT_EXT = PB1;
 constexpr uint16_t VOUT_Servo = PA3;
 
+constexpr auto PINS_OFF = []
+{
+    gpio_write << io_function::pull_low(digitalPinToPinName(ledPin))
+               << io_function::pull_low(digitalPinToPinName(buzzerPin));
+
+};
 #endif
