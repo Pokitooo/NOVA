@@ -5,6 +5,7 @@
 #include "vt_kalman"
 #include "Arduino_Extended.h"
 #include <STM32LowPower.h>
+#include "File_Utility.h"
 
 #include <Wire.h>
 #include <SPI.h>
@@ -20,6 +21,10 @@
 #include "nova_peripheral_def.h"
 #include "nova_pin_def.h"
 #include "nova_state_def.h"
+
+// Device specific
+#define THIS_FILE_PREFIX "NOVA_LOGGER_"
+#define THIS_FILE_EXTENSION "CSV"
 
 using time_type = uint32_t;
 using smart_delay = vt::smart_delay<time_type>;
@@ -41,11 +46,13 @@ TinyGPSPlus lc86;
 
 // SPI
 SPIClass spi1(PIN_SPI_MOSI1, PIN_SPI_MISO1, PIN_SPI_SCK1);
+SemaphoreHandle_t spiMutex;
 
 // SD
-SdSpiConfig sd_config(PIN_NSS_SD, SHARED_SPI, SD_SCK_MHZ(25), &spi1);
-SdFat32 sd;
-File32 file;
+SdSpiConfig sd_config(PIN_NSS_SD, SHARED_SPI, SD_SCK_MHZ(2), &spi1);
+using sd_t = SdFat32;
+using file_t = File32;
+FsUtil<sd_t, file_t> sd_util;
 
 // LoRa
 volatile bool tx_flag = false;
@@ -161,7 +168,7 @@ time_type log_interval = nova::config::LOG_IDLE_INTERVAL;
 
 HardwareTimer timer_buz(TIM3);
 
-//variables
+// variables
 volatile bool wake_flag = false;
 
 extern void read_m10q(void *);
@@ -189,6 +196,9 @@ extern void print_data(void *);
 extern void buzz(void *);
 
 extern void set_tx_flag();
+
+template <typename SdType, typename FileType>
+extern void init_storage(FsUtil<SdType, FileType> &sd_util_instance);
 
 extern void wakeup_isr();
 
@@ -218,23 +228,29 @@ void setup()
   // variable
   static bool state;
 
+  // SPI
+  spiMutex = xSemaphoreCreateMutex();
+
   // SD
-  // sdstate = sd_util.sd().begin(sd_config);
-  // if (sdatet) { init_storage(flash_util); }
-  state = sd.begin(sd_config);
-  Serial.printf("SD CARD: %s\n", state ? "SUCCESS" : "FAILED");
-  if (!state)
+  sdstate = sd_util.sd().begin(sd_config);
+  if (sdstate)
+  {
+    init_storage(sd_util);
+  }
+  // state = sd.begin(sd_config);
+  Serial.printf("SD CARD: %s\n", sdstate ? "SUCCESS" : "FAILED");
+  if (!sdstate)
     while (true)
       ;
-  if (file = sd.open("data.csv", O_RDWR | O_CREAT | O_AT_END | O_APPEND))
-  {
-    Serial.println("File open Success!");
-    sdstate = true;
-  }
-  else
-  {
-    Serial.println("File open failed!");
-  }
+  // if (file = sd.open("data.csv", O_RDWR | O_CREAT | O_AT_END | O_APPEND))
+  // {
+  //   Serial.println("File open Success!");
+  //   sdstate = true;
+  // }
+  // else
+  // {
+  //   Serial.println("File open failed!");
+  // }
 
   // LoRa
   int16_t ls = lora.begin(params.center_freq,
@@ -269,10 +285,10 @@ void setup()
   uint8_t status = icm.begin();
   if (status > 0)
   {
-    icm.setAccelFS(ICM42688::gpm8);
-    icm.setGyroFS(ICM42688::dps500);
-    icm.setAccelODR(ICM42688::odr12_5);
-    icm.setGyroODR(ICM42688::odr12_5);
+    icm.setAccelFS(ICM42688::gpm16);
+    icm.setGyroFS(ICM42688::dps2000);
+    icm.setAccelODR(ICM42688::odr25);
+    icm.setGyroODR(ICM42688::odr25);
     Serial.println("ICM Success");
   }
   Serial.print("ICM Status: ");
@@ -370,7 +386,7 @@ void setup()
   // Low power mode
   pinMode(LORA_DIO1, INPUT);
   attachInterrupt(digitalPinToInterrupt(LORA_DIO1), wakeup_isr, RISING);
-  LowPower.begin();
+  // LowPower.begin();
 }
 
 void buzz(void *)
@@ -462,7 +478,11 @@ void read_icm(void *)
   {
     static uint32_t t_prev = millis();
 
-    icm.getAGT();
+    if (xSemaphoreTake(spiMutex, portMAX_DELAY) == pdTRUE)
+    {
+      icm.getAGT();
+      xSemaphoreGive(spiMutex);
+    }
 
     data.imu.acc.x = icm.accX();
     data.imu.acc.y = icm.accY();
@@ -562,8 +582,12 @@ void send_data(void *)
     }
     else
     {
-      lora.startTransmit(constructed_data.c_str());
-      t0 = millis();
+      if (xSemaphoreTake(spiMutex, portMAX_DELAY) == pdTRUE)
+      {
+        lora.startTransmit(constructed_data.c_str());
+        t0 = millis();
+        xSemaphoreGive(spiMutex);
+      }
     }
     DELAY(2000);
     ++data.counter;
@@ -574,11 +598,22 @@ void save_data(void *)
 {
   for (;;)
   {
-    file.println(constructed_data);
-    file.flush();
-    Serial.println("Data written and flushed.");
-    DELAY(1000);
+    if (xSemaphoreTake(spiMutex, portMAX_DELAY) == pdTRUE)
+    {
+      sd_util.file() << constructed_data;
+      sd_util.flush_one();
+      Serial.println("Data written and flushed.");
+      xSemaphoreGive(spiMutex);
+      DELAY(1000);
+    }
   }
+}
+
+template <typename SdType, typename FileType>
+void init_storage(FsUtil<SdType, FileType> &sd_util_instance)
+{
+  sd_util_instance.find_file_name(THIS_FILE_PREFIX, THIS_FILE_EXTENSION);
+  sd_util_instance.template open_one<FsMode::WRITE>();
 }
 
 void accept_command(HardwareSerial *istream)
@@ -677,19 +712,23 @@ void accept_command(HardwareSerial *istream)
     // <--- Zero barometric altitude --->
     readBme(&bme_ref);
     ground_truth.altitude_offset = data.press;
-  } else if (command == "sleep") {
+  }
+  else if (command == "sleep")
+  {
     // <--- Put the device into deep sleep mode (power saving) --->
     digitalWrite(buzzerPin, 0);
     digitalWrite(ledPin, 0);
     LowPower.deepSleep();
-  } else if (command == "shutdown") {
+  }
+  else if (command == "shutdown")
+  {
     // <--- Shutdown the device --->
     digitalWrite(buzzerPin, 0);
     digitalWrite(ledPin, 0);
 
     if (sdstate)
     {
-      file.close();
+      sd_util.close_one();
     }
 
     LowPower.deepSleep();
@@ -701,7 +740,7 @@ void accept_command(HardwareSerial *istream)
     // <--- Reboot/reset the device --->
     if (sdstate)
     {
-      file.close();
+      sd_util.close_one();
     }
     __NVIC_SystemReset();
   }
@@ -1014,15 +1053,25 @@ void print_data(void *)
 {
   for (;;)
   {
+    Serial.println("====== DATA ======");
+
     Serial.print("Timestamp: ");
     Serial.println(data.timestamp);
 
     Serial.print("Counter: ");
     Serial.println(data.counter);
 
+    Serial.println("---- STATES ----");
+    Serial.print("PS: ");
+    Serial.println(static_cast<uint8_t>(data.ps));
+    Serial.print("Pyro A: ");
+    Serial.println(static_cast<uint8_t>(data.pyro_a));
+    Serial.print("Pyro B: ");
+    Serial.println(static_cast<uint8_t>(data.pyro_b));
+
     Serial.println("---- GPS ----");
     Serial.print("Latitude: ");
-    Serial.println(data.gps_latitude, 6); // Keep precision
+    Serial.println(data.gps_latitude, 6);
     Serial.print("Longitude: ");
     Serial.println(data.gps_longitude, 6);
     Serial.print("Altitude: ");
@@ -1030,15 +1079,15 @@ void print_data(void *)
 
     Serial.println("---- ENV ----");
     Serial.print("Temperature: ");
-    Serial.println(data.temp);
-    Serial.print("ALtitude: ");
-    Serial.println(data.altitude);
+    Serial.println(data.temp, 2);
+    Serial.print("Altitude: ");
+    Serial.println(data.altitude, 2);
     Serial.print("Pressure: ");
-    Serial.println(data.press);
+    Serial.println(data.press, 2);
 
     Serial.println("---- IMU ACC ----");
     Serial.print("X: ");
-    Serial.print(data.imu.acc.x, 3); // Keep 3 decimal precision
+    Serial.print(data.imu.acc.x, 3);
     Serial.print("  Y: ");
     Serial.print(data.imu.acc.y, 3);
     Serial.print("  Z: ");
@@ -1046,13 +1095,21 @@ void print_data(void *)
 
     Serial.println("---- IMU GYRO ----");
     Serial.print("X: ");
-    Serial.print(data.imu.gyro.x, 3); // Keep 3 decimal precision
+    Serial.print(data.imu.gyro.x, 3);
     Serial.print("  Y: ");
     Serial.print(data.imu.gyro.y, 3);
     Serial.print("  Z: ");
     Serial.println(data.imu.gyro.z, 3);
 
-    DELAY(1000);
+    Serial.println("---- COMM ----");
+    Serial.print("Last ACK: ");
+    Serial.println(data.last_ack);
+    Serial.print("Last NACK: ");
+    Serial.println(data.last_nack);
+
+    Serial.println("==================\n");
+
+    DELAY(1000); // Use vTaskDelay if FreeRTOS
   }
 }
 
@@ -1061,7 +1118,8 @@ void set_tx_flag()
   tx_flag = true;
 }
 
-void wakeup_isr() {
+void wakeup_isr()
+{
   wake_flag = true;
 }
 

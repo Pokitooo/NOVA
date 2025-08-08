@@ -1,47 +1,64 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include "SdFat.h"
-#include "psg_4_sd_tools.h"
-
+#include "File_Utility.h"
 #define SPI_SPEED_SD_MHZ (2)
 
-constexpr PinName PIN_SPI_MOSI1 = PA_7;
-constexpr PinName PIN_SPI_MISO1 = PA_6;
-constexpr PinName PIN_SPI_SCK1 = PA_5;
-constexpr PinName PIN_SPI_CS_SD = PB_9;
+#define THIS_FILE_PREFIX "NOVA_LOGGER_"
+#define THIS_FILE_EXTENSION "CSV"
 
-SPIClass SPI_1(pinNametoDigitalPin(PIN_SPI_MOSI1), pinNametoDigitalPin(PIN_SPI_MISO1), pinNametoDigitalPin(PIN_SPI_SCK1));
-SdSpiConfig sd0_cfg(pinNametoDigitalPin(PIN_SPI_CS_SD), DEDICATED_SPI, SD_SCK_MHZ(SPI_SPEED_SD_MHZ), &SPI_1);
-SdFat32 sd0;
-File32 sd0_file;
-String sd0_filename;
+// SPI
+#define PIN_SPI_MOSI1 PA7
+#define PIN_SPI_MISO1 PA6
+#define PIN_SPI_SCK1 PA5
 
-void setup() {
+// NSS
+#define PIN_NSS_SD PB9
+
+// SPI
+SPIClass spi1(PIN_SPI_MOSI1, PIN_SPI_MISO1, PIN_SPI_SCK1);
+
+// SD
+SdSpiConfig sd_config(PIN_NSS_SD, SHARED_SPI, SD_SCK_MHZ(2), &spi1);
+using sd_t = SdFat32;
+using file_t = File32;
+FsUtil<sd_t, file_t> sd_util;
+
+bool sdstate;
+
+String constructed_data;
+uint64_t data = 1;
+
+template <typename SdType, typename FileType>
+void init_storage(FsUtil<SdType, FileType> &sd_util_instance)
+{
+    sd_util_instance.find_file_name(THIS_FILE_PREFIX, THIS_FILE_EXTENSION);
+    sd_util_instance.template open_one<FsMode::WRITE>();
+}
+
+void setup()
+{
     Serial.begin(460800);
     delay(2000);
 
-    retry:
-    delay(500);
-    Serial.println("Begin SD!");
-    SPI_1.begin();
-    bool status = sd0.begin(sd0_cfg);
-
-    if (status)
-        Serial.println("Sucess!");
-    else {
-        Serial.println("Failed!");
-        goto retry;
+    sdstate = sd_util.sd().begin(sd_config);
+    if (sdstate)
+    {
+        init_storage(sd_util);
     }
-
-    make_new_filename(sd0, sd0_filename, "mcu0_data_test_", ".csv");
-    list_files(sd0);
-    open_for_append(sd0, sd0_file, sd0_filename);
-    sd0_file.println("DATATADTATDASDHJAGSFHJGHJFGKJASHFAJSFH");
-    sd0_file.close();
-    read_file_to_stream(sd0, sd0_filename);
+    Serial.printf("SD CARD: %s\n", sdstate ? "SUCCESS" : "FAILED");
+    if (!sdstate)
+        while (true)
+            ;
 }
 
-void loop() {
-    Serial.println("Loop!");
-    delay(5000);
+void loop()
+{
+    sd_util.file().println(data);
+    sd_util.flush_one();
+    Serial.println("Data written and flushed.");
+    Serial.println(data);
+    ++data;
+    delay(1000);
+
 }
