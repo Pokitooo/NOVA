@@ -4,7 +4,7 @@
 #include "vt_linalg"
 #include "vt_kalman"
 #include "Arduino_Extended.h"
-#include <cstddef>
+#include <STM32LowPower.h>
 
 #include <Wire.h>
 #include <SPI.h>
@@ -44,8 +44,8 @@ SPIClass spi1(PIN_SPI_MOSI1, PIN_SPI_MISO1, PIN_SPI_SCK1);
 
 // SD
 SdSpiConfig sd_config(PIN_NSS_SD, SHARED_SPI, SD_SCK_MHZ(25), &spi1);
-SdExFat sd;
-ExFile file;
+SdFat32 sd;
+File32 file;
 
 // LoRa
 volatile bool tx_flag = false;
@@ -161,6 +161,9 @@ time_type log_interval = nova::config::LOG_IDLE_INTERVAL;
 
 HardwareTimer timer_buz(TIM3);
 
+//variables
+volatile bool wake_flag = false;
+
 extern void read_m10q(void *);
 
 extern void read_gnss(void *);
@@ -187,6 +190,8 @@ extern void buzz(void *);
 
 extern void set_tx_flag();
 
+extern void wakeup_isr();
+
 void setup()
 {
   Serial.begin(460800);
@@ -199,11 +204,14 @@ void setup()
 
   // GPIO
   pinMode(buzzerPin, OUTPUT); // BUZZER
+  digitalWrite(buzzerPin, 1);
+  delay(100);
+  digitalWrite(buzzerPin, 0);
   timer_buz.setOverflow(nova::config::BUZZER_ON_INTERVAL * 1000, MICROSEC_FORMAT);
   timer_buz.attachInterrupt([]
                             {
-    gpio_write << io_function::pull_low(digitalPinToPinName(buzzerPin));
-    timer_buz.pause(); });
+  gpio_write << io_function::pull_low(digitalPinToPinName(buzzerPin));
+  timer_buz.pause(); });
   timer_buz.pause();
   pinMode(ledPin, OUTPUT); // LED
 
@@ -211,6 +219,8 @@ void setup()
   static bool state;
 
   // SD
+  // sdstate = sd_util.sd().begin(sd_config);
+  // if (sdatet) { init_storage(flash_util); }
   state = sd.begin(sd_config);
   Serial.printf("SD CARD: %s\n", state ? "SUCCESS" : "FAILED");
   if (!state)
@@ -356,6 +366,11 @@ void setup()
   xTaskCreate(print_data, "", 1024, nullptr, 2, nullptr);
   xTaskCreate(buzz, "", 1024, nullptr, 2, nullptr);
   vTaskStartScheduler();
+
+  // Low power mode
+  pinMode(LORA_DIO1, INPUT);
+  attachInterrupt(digitalPinToInterrupt(LORA_DIO1), wakeup_isr, RISING);
+  LowPower.begin();
 }
 
 void buzz(void *)
@@ -566,7 +581,6 @@ void save_data(void *)
   }
 }
 
-/*
 void accept_command(HardwareSerial *istream)
 {
   Stream &stream = *istream; // Alias to istream
@@ -632,7 +646,8 @@ void accept_command(HardwareSerial *istream)
   {
     if (data.ps != nova::state_t::IDLE_SAFE && data.ps != nova::state_t::RECOVERED_SAFE)
     {
-      gpio_write << io_function::pull_high(nova::pins::pyro::SIG_A);
+      // Change to Servo
+      // gpio_write << io_function::pull_high(pins::pyro::SIG_A);
       data.pyro_a = nova::pyro_state_t::FIRING;
     }
   }
@@ -640,7 +655,7 @@ void accept_command(HardwareSerial *istream)
   {
     if (data.ps != nova::state_t::IDLE_SAFE && data.ps != nova::state_t::RECOVERED_SAFE)
     {
-      gpio_write << io_function::pull_high(nova::pins::pyro::SIG_B);
+      // gpio_write << io_function::pull_high(pins::pyro::SIG_B);
       data.pyro_b = nova::pyro_state_t::FIRING;
     }
   }
@@ -662,30 +677,19 @@ void accept_command(HardwareSerial *istream)
     // <--- Zero barometric altitude --->
     readBme(&bme_ref);
     ground_truth.altitude_offset = data.press;
-  }
-  else if (command == "sleep")
-  {
+  } else if (command == "sleep") {
     // <--- Put the device into deep sleep mode (power saving) --->
-    pwm_led.disable();
-    nova::pins::PINS_OFF();
-    nova::pins::SET_LED(nova::BLUE);
+    digitalWrite(buzzerPin, 0);
+    digitalWrite(ledPin, 0);
     LowPower.deepSleep();
-    pwm_led.reset();
-  }
-  else if (command == "shutdown")
-  {
+  } else if (command == "shutdown") {
     // <--- Shutdown the device --->
-    pwm_led.disable();
-    nova::pins::PINS_OFF();
-    nova::pins::SET_LED(nova::RED);
+    digitalWrite(buzzerPin, 0);
+    digitalWrite(ledPin, 0);
 
     if (sdstate)
     {
-      sd_util.close_one();
-    }
-    if (pvalid.flash)
-    {
-      flash_util.close_one();
+      file.close();
     }
 
     LowPower.deepSleep();
@@ -695,13 +699,9 @@ void accept_command(HardwareSerial *istream)
   else if (command == "reboot" || command == "restart")
   {
     // <--- Reboot/reset the device --->
-    if (pvalid.sd)
+    if (sdstate)
     {
-      sd_util.close_one();
-    }
-    if (pvalid.flash)
-    {
-      flash_util.close_one();
+      file.close();
     }
     __NVIC_SystemReset();
   }
@@ -712,7 +712,6 @@ void accept_command(HardwareSerial *istream)
     --data.last_ack;
   }
 }
-*/
 
 void fsm_eval(void *)
 {
@@ -1060,6 +1059,10 @@ void print_data(void *)
 void set_tx_flag()
 {
   tx_flag = true;
+}
+
+void wakeup_isr() {
+  wake_flag = true;
 }
 
 void loop()
