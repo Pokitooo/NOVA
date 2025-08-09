@@ -8,6 +8,7 @@
         "string_view": "cpp",
         "initializer_list": "cpp",
         "lib_xcore": "cpp",
-        "iomanip": "cpp"
+        "iomanip": "cpp",
+        "random": "cpp"
     }
 }

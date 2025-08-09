@@ -118,9 +118,9 @@ struct Data
 // Software filters
 constexpr size_t FILTER_ORDER = 4;
 constexpr double dt_base = 0.1;
-constexpr double covariance = 0.01;
-constexpr double alpha = 0.;
-constexpr double beta = 0.;
+constexpr double covariance = 0.082;
+constexpr double alpha = 2.25e-6;
+constexpr double beta = 9.0e-4;
 constexpr double G = 9.81;
 
 struct software_filters
@@ -191,7 +191,11 @@ extern void send_data(void *);
 
 extern void save_data(void *);
 
+extern void accept_command(void *);
+
 extern void print_data(void *);
+
+extern void fsm_eval(void *);
 
 extern void buzz(void *);
 
@@ -201,6 +205,8 @@ template <typename SdType, typename FileType>
 extern void init_storage(FsUtil<SdType, FileType> &sd_util_instance);
 
 extern void wakeup_isr();
+
+extern void handle_command(String rx_message);
 
 void setup()
 {
@@ -237,20 +243,10 @@ void setup()
   {
     init_storage(sd_util);
   }
-  // state = sd.begin(sd_config);
   Serial.printf("SD CARD: %s\n", sdstate ? "SUCCESS" : "FAILED");
   if (!sdstate)
     while (true)
       ;
-  // if (file = sd.open("data.csv", O_RDWR | O_CREAT | O_AT_END | O_APPEND))
-  // {
-  //   Serial.println("File open Success!");
-  //   sdstate = true;
-  // }
-  // else
-  // {
-  //   Serial.println("File open failed!");
-  // }
 
   // LoRa
   int16_t ls = lora.begin(params.center_freq,
@@ -315,7 +311,7 @@ void setup()
 
   if (bme1.begin(0x76, &i2c3))
   {
-    bme1.SAMPLING_X4;
+    bme1.SAMPLING_X16;
     for (size_t i = 0; i < 20; ++i)
     {
       readBme(&bme_ref);
@@ -375,17 +371,19 @@ void setup()
   xTaskCreate(read_bme, "", 2048, nullptr, 2, nullptr);
   xTaskCreate(read_icm, "", 2048, nullptr, 2, nullptr);
   xTaskCreate(synchronize_kf, "", 1024, nullptr, 2, nullptr);
-  xTaskCreate(read_current, "", 2048, nullptr, 2, nullptr);
+  // xTaskCreate(read_current, "", 2048, nullptr, 2, nullptr);
+
   xTaskCreate(construct_data, "", 1024, nullptr, 2, nullptr);
-  xTaskCreate(send_data, "", 2048, nullptr, 2, nullptr);
+  // xTaskCreate(send_data, "", 2048, nullptr, 2, nullptr);
   xTaskCreate(save_data, "", 2048, nullptr, 2, nullptr);
+  xTaskCreate(accept_command, "", 2048, nullptr, 2, nullptr);
   xTaskCreate(print_data, "", 1024, nullptr, 2, nullptr);
+
+  xTaskCreate(fsm_eval, "", 1024, nullptr, 2, nullptr);
   xTaskCreate(buzz, "", 1024, nullptr, 2, nullptr);
   vTaskStartScheduler();
 
   // Low power mode
-  pinMode(LORA_DIO1, INPUT);
-  attachInterrupt(digitalPinToInterrupt(LORA_DIO1), wakeup_isr, RISING);
   // LowPower.begin();
 }
 
@@ -484,9 +482,9 @@ void read_icm(void *)
       xSemaphoreGive(spiMutex);
     }
 
-    data.imu.acc.x = icm.accX();
-    data.imu.acc.y = icm.accY();
-    data.imu.acc.z = icm.accZ();
+    data.imu.acc.x = icm.accX() * G;
+    data.imu.acc.y = icm.accY() * G;
+    data.imu.acc.z = icm.accZ() * G;
     data.imu.gyro.x = icm.gyrX();
     data.imu.gyro.y = icm.gyrY();
     data.imu.gyro.z = icm.gyrZ();
@@ -589,7 +587,7 @@ void send_data(void *)
         xSemaphoreGive(spiMutex);
       }
     }
-    DELAY(2000);
+    DELAY(&tx_interval);
     ++data.counter;
   }
 }
@@ -604,7 +602,7 @@ void save_data(void *)
       sd_util.flush_one();
       Serial.println("Data written and flushed.");
       xSemaphoreGive(spiMutex);
-      DELAY(1000);
+      DELAY(&log_interval);
     }
   }
 }
@@ -616,21 +614,32 @@ void init_storage(FsUtil<SdType, FileType> &sd_util_instance)
   sd_util_instance.template open_one<FsMode::WRITE>();
 }
 
-void accept_command(HardwareSerial *istream)
+void accept_command(void *)
 {
-  Stream &stream = *istream; // Alias to istream
-
-  if (!stream.available())
-    return;
-  delay(20ul);
-
-  String rx_message = "";
-  rx_message.reserve(64);
-
-  while (stream.available())
+  for (;;)
   {
-    rx_message += static_cast<char>(stream.read());
+    String rx;
+    uint16_t state = lora.readData(rx);
+    if (state == RADIOLIB_ERR_NONE)
+    {
+      // got a packet -> parse it
+      handle_command(rx);
+      digitalWrite(ledPin, !digitalRead(ledPin)); // blink on RX
+
+      // re-arm RX after reading
+      lora.startReceive();
+    }
+    else
+    {
+    }
+    DELAY(100);
   }
+}
+
+void handle_command(String rx_message)
+{
+  Serial.print("[RX] ");
+  Serial.println(rx_message);
 
   // Repeats for at least 5 times before continuing
   if (rx_message.substring(0, 4) != "cmd ")
@@ -754,298 +763,302 @@ void accept_command(HardwareSerial *istream)
 
 void fsm_eval(void *)
 {
-  static bool state_satisfaction = false;
-  int32_t static launched_time = 0;
-  static algorithm::Sampler sampler[2];
+  for (;;)
+  {
+    static bool state_satisfaction = false;
+    int32_t static launched_time = 0;
+    static algorithm::Sampler sampler[2];
 
-  const double alt_x = filters.altitude.kf.state_vector[0] - ground_truth.altitude_offset;
-  const double vel_x = filters.altitude.kf.state_vector[1];
-  const double acc = filters.acceleration.kf.state_vector[2];
+    const double alt_x = filters.altitude.kf.state_vector[0] - ground_truth.altitude_offset;
+    const double vel_x = filters.altitude.kf.state_vector[1];
+    const double acc = filters.acceleration.kf.state_vector[2];
 
-  switch (data.ps)
-  {
-  case nova::state_t::STARTUP:
-  {
-    // Next: always transfer
-    data.ps = nova::state_t::IDLE_SAFE;
-    break;
-  }
-  case nova::state_t::IDLE_SAFE:
-  {
-    //  <--- Next: wait for uplink --->
-    buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_IDLE_INTERVAL);
-    break;
-  }
-  case nova::state_t::ARMED:
-  {
-    // <--- Next: wait for uplink --->
-    buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_ARMED_INTERVAL);
-
-    if (launch_override)
+    switch (data.ps)
     {
-      data.ps = nova::state_t::PAD_PREOP;
-      tx_interval = nova::config::TX_PAD_PREOP_INTERVAL;
-      log_interval = nova::config::LOG_PAD_PREOP_INTERVAL;
+    case nova::state_t::STARTUP:
+    {
+      // Next: always transfer
+      data.ps = nova::state_t::IDLE_SAFE;
+      break;
     }
-
-    break;
-  }
-  case nova::state_t::PAD_PREOP:
-  {
-    // !!!!! Next: DETECT launch !!!!!
-    buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_PAD_PREOP_INTERVAL);
-
-    static on_off_timer tim(nova::config::alg::LAUNCH_TON / 2, nova::config::alg::LAUNCH_TON / 2, millis);
-
-    if (!state_satisfaction)
+    case nova::state_t::IDLE_SAFE:
     {
-      sampler[0].add(acc >= nova::config::alg::LAUNCH_ACC);
-      sampler[1].add(acc >= nova::config::alg::LAUNCH_ACC);
+      //  <--- Next: wait for uplink --->
+      buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_IDLE_INTERVAL);
+      break;
+    }
+    case nova::state_t::ARMED:
+    {
+      // <--- Next: wait for uplink --->
+      buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_ARMED_INTERVAL);
 
-      tim.on_rising([&]
-                    {
+      if (launch_override)
+      {
+        data.ps = nova::state_t::PAD_PREOP;
+        tx_interval = nova::config::TX_PAD_PREOP_INTERVAL;
+        log_interval = nova::config::LOG_PAD_PREOP_INTERVAL;
+      }
+
+      break;
+    }
+    case nova::state_t::PAD_PREOP:
+    {
+      // !!!!! Next: DETECT launch !!!!!
+      buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_PAD_PREOP_INTERVAL);
+
+      static on_off_timer tim(nova::config::alg::LAUNCH_TON / 2, nova::config::alg::LAUNCH_TON / 2, millis);
+
+      if (!state_satisfaction)
+      {
+        sampler[0].add(acc >= nova::config::alg::LAUNCH_ACC);
+        sampler[1].add(acc >= nova::config::alg::LAUNCH_ACC);
+
+        tim.on_rising([&]
+                      {
           if (sampler[0].vote<1, 1>()) {
             state_satisfaction |= true;
           }
           sampler[0].reset(); });
 
-      tim.on_falling([&]
-                     {
+        tim.on_falling([&]
+                       {
           if (sampler[1].vote<1, 1>()) {
             state_satisfaction |= true;
           }
           sampler[1].reset(); });
+      }
+
+      state_satisfaction |= launch_override;
+
+      if (state_satisfaction)
+      {
+        launched_time = millis();
+        data.ps = nova::state_t::POWERED;
+        state_satisfaction = false;
+        sampler[0].reset();
+        sampler[1].reset();
+        tx_interval = nova::config::TX_ASCEND_INTERVAL;
+        log_interval = nova::config::LOG_ASCEND_INTERVAL;
+      }
+
+      break;
     }
-
-    state_satisfaction |= launch_override;
-
-    if (state_satisfaction)
+    case nova::state_t::POWERED:
     {
-      launched_time = millis();
-      data.ps = nova::state_t::POWERED;
-      state_satisfaction = false;
-      sampler[0].reset();
-      sampler[1].reset();
-      tx_interval = nova::config::TX_ASCEND_INTERVAL;
-      log_interval = nova::config::LOG_ASCEND_INTERVAL;
-    }
+      // !!!!! Next: DETECT motor burnout !!!!!
+      buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_ASCEND_INTERVAL);
 
-    break;
-  }
-  case nova::state_t::POWERED:
-  {
-    // !!!!! Next: DETECT motor burnout !!!!!
-    buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_ASCEND_INTERVAL);
+      static on_off_timer tim(nova::config::alg::BURNOUT_TON / 2, nova::config::alg::BURNOUT_TON / 2, millis);
 
-    static on_off_timer tim(nova::config::alg::BURNOUT_TON / 2, nova::config::alg::BURNOUT_TON / 2, millis);
+      if (!state_satisfaction)
+      {
+        sampler[0].add(acc < nova::config::alg::LAUNCH_ACC);
+        sampler[1].add(acc < nova::config::alg::LAUNCH_ACC);
 
-    if (!state_satisfaction)
-    {
-      sampler[0].add(acc < nova::config::alg::LAUNCH_ACC);
-      sampler[1].add(acc < nova::config::alg::LAUNCH_ACC);
-
-      tim.on_rising([&]
-                    {
+        tim.on_rising([&]
+                      {
           if (sampler[0].vote<1, 1>()) {
             state_satisfaction |= millis() - launched_time >= nova::config::TIME_TO_BURNOUT_MIN;
           }
           sampler[0].reset(); });
 
-      tim.on_falling([&]
-                     {
+        tim.on_falling([&]
+                       {
           if (sampler[1].vote<1, 1>()) {
             state_satisfaction |= millis() - launched_time >= nova::config::TIME_TO_BURNOUT_MIN;
           }
           sampler[1].reset(); });
+      }
+
+      state_satisfaction |= millis() - launched_time >= nova::config::TIME_TO_BURNOUT_MAX;
+
+      if (state_satisfaction)
+      {
+        data.ps = nova::state_t::COASTING;
+        state_satisfaction = false;
+        sampler[0].reset();
+        sampler[1].reset();
+      }
+
+      break;
     }
-
-    state_satisfaction |= millis() - launched_time >= nova::config::TIME_TO_BURNOUT_MAX;
-
-    if (state_satisfaction)
+    case nova::state_t::COASTING:
     {
-      data.ps = nova::state_t::COASTING;
-      state_satisfaction = false;
-      sampler[0].reset();
-      sampler[1].reset();
-    }
+      // !!!!! Next: DETECT apogee !!!!!
+      buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_ASCEND_INTERVAL);
 
-    break;
-  }
-  case nova::state_t::COASTING:
-  {
-    // !!!!! Next: DETECT apogee !!!!!
-    buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_ASCEND_INTERVAL);
+      static on_off_timer tim(nova::config::alg::APOGEE_SLOW_TON / 2, nova::config::alg::APOGEE_SLOW_TON / 2, millis);
 
-    static on_off_timer tim(nova::config::alg::APOGEE_SLOW_TON / 2, nova::config::alg::APOGEE_SLOW_TON / 2, millis);
+      if (!state_satisfaction)
+      {
+        sampler[0].add(vel_x <= nova::config::alg::APOGEE_VEL);
+        sampler[1].add(vel_x <= nova::config::alg::APOGEE_VEL);
 
-    if (!state_satisfaction)
-    {
-      sampler[0].add(vel_x <= nova::config::alg::APOGEE_VEL);
-      sampler[1].add(vel_x <= nova::config::alg::APOGEE_VEL);
-
-      tim.on_rising([&]
-                    {
+        tim.on_rising([&]
+                      {
           if (sampler[0].vote<1, 1>()) {
             state_satisfaction |= millis() - launched_time >= nova::config::TIME_TO_APOGEE_MIN;
           }
           sampler[0].reset(); });
 
-      tim.on_falling([&]
-                     {
+        tim.on_falling([&]
+                       {
           if (sampler[1].vote<1, 1>()) {
             state_satisfaction |= millis() - launched_time >= nova::config::TIME_TO_APOGEE_MIN;
           }
           sampler[1].reset(); });
 
-      state_satisfaction |= millis() - launched_time >= nova::config::TIME_TO_APOGEE_MAX;
+        state_satisfaction |= millis() - launched_time >= nova::config::TIME_TO_APOGEE_MAX;
+      }
+
+      if (state_satisfaction)
+      {
+        data.ps = nova::state_t::DROGUE_DEPLOY;
+        state_satisfaction = false;
+        sampler[0].reset();
+        sampler[1].reset();
+      }
+
+      break;
     }
-
-    if (state_satisfaction)
+    case nova::state_t::DROGUE_DEPLOY:
     {
-      data.ps = nova::state_t::DROGUE_DEPLOY;
-      state_satisfaction = false;
-      sampler[0].reset();
-      sampler[1].reset();
+      // Next: activate and always transfer
+      buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_DESCEND_INTERVAL);
+
+      static bool fired = false;
+
+      if (!fired)
+      {
+        // gpio_write << io_function::pull_high(nova::pins::pyro::SIG_A); Change to servo
+        data.pyro_a = nova::pyro_state_t::FIRING;
+        fired = true;
+      }
+      else if (data.pyro_a == nova::pyro_state_t::FIRED)
+      {
+        data.ps = nova::state_t::DROGUE_DESCEND;
+      }
+
+      break;
     }
-
-    break;
-  }
-  case nova::state_t::DROGUE_DEPLOY:
-  {
-    // Next: activate and always transfer
-    buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_DESCEND_INTERVAL);
-
-    static bool fired = false;
-
-    if (!fired)
+    case nova::state_t::DROGUE_DESCEND:
     {
-      // gpio_write << io_function::pull_high(nova::pins::pyro::SIG_A); Change to servo
-      data.pyro_a = nova::pyro_state_t::FIRING;
-      fired = true;
-    }
-    else if (data.pyro_a == nova::pyro_state_t::FIRED)
-    {
-      data.ps = nova::state_t::DROGUE_DESCEND;
-    }
+      // !!!!! Next: DETECT main deployment altitude !!!!!
+      buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_DESCEND_INTERVAL);
 
-    break;
-  }
-  case nova::state_t::DROGUE_DESCEND:
-  {
-    // !!!!! Next: DETECT main deployment altitude !!!!!
-    buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_DESCEND_INTERVAL);
+      static on_off_timer tim(nova::config::alg::MAIN_DEPLOYMENT_TON / 2, nova::config::alg::MAIN_DEPLOYMENT_TON / 2, millis);
 
-    static on_off_timer tim(nova::config::alg::MAIN_DEPLOYMENT_TON / 2, nova::config::alg::MAIN_DEPLOYMENT_TON / 2, millis);
+      if (!state_satisfaction)
+      {
+        sampler[0].add(alt_x <= nova::config::alg::MAIN_ALTITUDE);
+        sampler[1].add(alt_x <= nova::config::alg::MAIN_ALTITUDE);
 
-    if (!state_satisfaction)
-    {
-      sampler[0].add(alt_x <= nova::config::alg::MAIN_ALTITUDE);
-      sampler[1].add(alt_x <= nova::config::alg::MAIN_ALTITUDE);
-
-      tim.on_rising([&]
-                    {
+        tim.on_rising([&]
+                      {
           if (sampler[0].vote<1, 1>()) {
             state_satisfaction |= true;
           }
           sampler[0].reset(); });
 
-      tim.on_falling([&]
-                     {
+        tim.on_falling([&]
+                       {
           if (sampler[1].vote<1, 1>()) {
             state_satisfaction |= true;
           }
           sampler[1].reset(); });
+      }
+
+      if (state_satisfaction)
+      {
+        data.ps = nova::state_t::MAIN_DEPLOY;
+        state_satisfaction = false;
+        sampler[0].reset();
+        sampler[1].reset();
+        tx_interval = nova::config::TX_DESCEND_INTERVAL;
+        log_interval = nova::config::LOG_DESCEND_INTERVAL;
+      }
+
+      break;
     }
-
-    if (state_satisfaction)
+    case nova::state_t::MAIN_DEPLOY:
     {
-      data.ps = nova::state_t::MAIN_DEPLOY;
-      state_satisfaction = false;
-      sampler[0].reset();
-      sampler[1].reset();
-      tx_interval = nova::config::TX_DESCEND_INTERVAL;
-      log_interval = nova::config::LOG_DESCEND_INTERVAL;
+      // Next: activate and always transfer
+      buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_DESCEND_INTERVAL);
+
+      static bool fired = false;
+
+      if (!fired)
+      {
+        // gpio_write << io_function::pull_high(nova::pins::pyro::SIG_B); //Change to solenoid
+        data.pyro_b = nova::pyro_state_t::FIRING;
+        fired = true;
+      }
+      else if (data.pyro_b == nova::pyro_state_t::FIRED)
+      {
+        data.ps = nova::state_t::MAIN_DESCEND;
+      }
+
+      break;
     }
-
-    break;
-  }
-  case nova::state_t::MAIN_DEPLOY:
-  {
-    // Next: activate and always transfer
-    buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_DESCEND_INTERVAL);
-
-    static bool fired = false;
-
-    if (!fired)
+    case nova::state_t::MAIN_DESCEND:
     {
-      // gpio_write << io_function::pull_high(nova::pins::pyro::SIG_B); //Change to solenoid
-      data.pyro_b = nova::pyro_state_t::FIRING;
-      fired = true;
-    }
-    else if (data.pyro_b == nova::pyro_state_t::FIRED)
-    {
-      data.ps = nova::state_t::MAIN_DESCEND;
-    }
+      // !!!!! Next: DETECT landing !!!!!
+      buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_DESCEND_INTERVAL);
 
-    break;
-  }
-  case nova::state_t::MAIN_DESCEND:
-  {
-    // !!!!! Next: DETECT landing !!!!!
-    buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_DESCEND_INTERVAL);
+      static on_off_timer tim(nova::config::alg::LANDING_TON / 2, nova::config::alg::LANDING_TON / 2, millis);
 
-    static on_off_timer tim(nova::config::alg::LANDING_TON / 2, nova::config::alg::LANDING_TON / 2, millis);
+      if (!state_satisfaction)
+      {
+        const bool stable = algorithm::is_zero(vel_x, 0.5);
+        sampler[0].add(stable);
+        sampler[1].add(stable);
 
-    if (!state_satisfaction)
-    {
-      const bool stable = algorithm::is_zero(vel_x, 0.5);
-      sampler[0].add(stable);
-      sampler[1].add(stable);
-
-      tim.on_rising([&]
-                    {
+        tim.on_rising([&]
+                      {
           if (sampler[0].vote<1, 1>()) {
             state_satisfaction |= true;
           }
           sampler[0].reset(); });
 
-      tim.on_falling([&]
-                     {
+        tim.on_falling([&]
+                       {
           if (sampler[1].vote<1, 1>()) {
             state_satisfaction |= true;
           }
           sampler[1].reset(); });
-    }
+      }
 
-    if (state_satisfaction)
+      if (state_satisfaction)
+      {
+        data.ps = nova::state_t::LANDED;
+        state_satisfaction = false;
+        sampler[0].reset();
+        sampler[1].reset();
+        tx_interval = nova::config::TX_IDLE_INTERVAL;
+        log_interval = nova::config::LOG_IDLE_INTERVAL;
+      }
+
+      break;
+    }
+    case nova::state_t::LANDED:
     {
-      data.ps = nova::state_t::LANDED;
-      state_satisfaction = false;
-      sampler[0].reset();
-      sampler[1].reset();
-      tx_interval = nova::config::TX_IDLE_INTERVAL;
-      log_interval = nova::config::LOG_IDLE_INTERVAL;
+      // <--- Next: wait for uplink --->
+      buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_DESCEND_INTERVAL);
+
+      break;
     }
+    case nova::state_t::RECOVERED_SAFE:
+    {
+      // Sink state (requires reboot)
+      buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_IDLE_INTERVAL);
 
-    break;
-  }
-  case nova::state_t::LANDED:
-  {
-    // <--- Next: wait for uplink --->
-    buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_DESCEND_INTERVAL);
-
-    break;
-  }
-  case nova::state_t::RECOVERED_SAFE:
-  {
-    // Sink state (requires reboot)
-    buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_IDLE_INTERVAL);
-
-    do_nothing();
-    break;
-  }
-  default:
-    __builtin_unreachable();
+      do_nothing();
+      break;
+    }
+    default:
+      __builtin_unreachable();
+    }
+    DELAY(25);
   }
 }
 
@@ -1063,11 +1076,11 @@ void print_data(void *)
 
     Serial.println("---- STATES ----");
     Serial.print("PS: ");
-    Serial.println(static_cast<uint8_t>(data.ps));
+    Serial.println(nova::state_string(data.ps));
     Serial.print("Pyro A: ");
-    Serial.println(static_cast<uint8_t>(data.pyro_a));
+    Serial.println(nova::pyro_state_string(data.pyro_a));
     Serial.print("Pyro B: ");
-    Serial.println(static_cast<uint8_t>(data.pyro_b));
+    Serial.println(nova::pyro_state_string(data.pyro_b));
 
     Serial.println("---- GPS ----");
     Serial.print("Latitude: ");
