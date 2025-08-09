@@ -56,9 +56,10 @@ FsUtil<sd_t, file_t> sd_util;
 
 // LoRa
 volatile bool tx_flag = false;
+volatile bool rx_flag = false;
 String s;
 
-SPISettings lora_spi_settings(18'000'000, MSBFIRST, SPI_MODE0);
+SPISettings lora_spi_settings(4'000'000, MSBFIRST, SPI_MODE0);
 
 constexpr struct
 {
@@ -201,10 +202,10 @@ extern void buzz(void *);
 
 extern void set_tx_flag();
 
+extern void set_rx_flag();
+
 template <typename SdType, typename FileType>
 extern void init_storage(FsUtil<SdType, FileType> &sd_util_instance);
-
-extern void wakeup_isr();
 
 extern void handle_command(String rx_message);
 
@@ -261,6 +262,7 @@ void setup()
   state = state || lora.explicitHeader();
   state = state || lora.setCRC(true);
   state = state || lora.autoLDRO();
+  lora.setPacketReceivedAction(set_rx_flag);
   attachInterrupt(LORA_DIO1, set_tx_flag, CHANGE);
 
   if (ls == RADIOLIB_ERR_NONE)
@@ -374,17 +376,17 @@ void setup()
   // xTaskCreate(read_current, "", 2048, nullptr, 2, nullptr);
 
   xTaskCreate(construct_data, "", 1024, nullptr, 2, nullptr);
-  // xTaskCreate(send_data, "", 2048, nullptr, 2, nullptr);
+  xTaskCreate(send_data, "", 2048, nullptr, 2, nullptr);
   xTaskCreate(save_data, "", 2048, nullptr, 2, nullptr);
   xTaskCreate(accept_command, "", 2048, nullptr, 2, nullptr);
   xTaskCreate(print_data, "", 1024, nullptr, 2, nullptr);
 
   xTaskCreate(fsm_eval, "", 1024, nullptr, 2, nullptr);
-  xTaskCreate(buzz, "", 1024, nullptr, 2, nullptr);
+  // xTaskCreate(buzz, "", 1024, nullptr, 2, nullptr);
   vTaskStartScheduler();
 
   // Low power mode
-  // LowPower.begin();
+  LowPower.begin();
 }
 
 void buzz(void *)
@@ -540,17 +542,23 @@ void construct_data(void *)
         << "<1>"
         << data.counter
         << data.timestamp
+
+        << nova::state_string(data.ps)
         << String(data.gps_latitude, 6)
         << String(data.gps_longitude, 6)
         << String(data.altitude, 4)
+
+        << nova::pyro_state_string(data.pyro_a)
+        << nova::pyro_state_string(data.pyro_b)
+
         << data.temp
         << data.press
-        << data.imu.acc.x
-        << data.imu.acc.y
-        << data.imu.acc.z
-        << data.imu.gyro.x
-        << data.imu.gyro.y
-        << data.imu.gyro.z;
+
+        << data.imu.acc.x << data.imu.acc.y << data.imu.acc.z
+        << data.imu.gyro.x << data.imu.gyro.y << data.imu.gyro.z
+        
+        << data.last_ack
+        << data.last_nack;
     DELAY(1000);
   }
 }
@@ -584,12 +592,20 @@ void send_data(void *)
       {
         lora.startTransmit(constructed_data.c_str());
         t0 = millis();
+        // digitalToggle(buzzerPin);
         xSemaphoreGive(spiMutex);
       }
     }
     DELAY(&tx_interval);
     ++data.counter;
   }
+}
+
+template <typename SdType, typename FileType>
+void init_storage(FsUtil<SdType, FileType> &sd_util_instance)
+{
+  sd_util_instance.find_file_name(THIS_FILE_PREFIX, THIS_FILE_EXTENSION);
+  sd_util_instance.template open_one<FsMode::WRITE>();
 }
 
 void save_data(void *)
@@ -602,35 +618,46 @@ void save_data(void *)
       sd_util.flush_one();
       Serial.println("Data written and flushed.");
       xSemaphoreGive(spiMutex);
-      DELAY(&log_interval);
     }
+    DELAY(&log_interval);
   }
-}
-
-template <typename SdType, typename FileType>
-void init_storage(FsUtil<SdType, FileType> &sd_util_instance)
-{
-  sd_util_instance.find_file_name(THIS_FILE_PREFIX, THIS_FILE_EXTENSION);
-  sd_util_instance.template open_one<FsMode::WRITE>();
 }
 
 void accept_command(void *)
 {
   for (;;)
   {
-    String rx;
-    uint16_t state = lora.readData(rx);
-    if (state == RADIOLIB_ERR_NONE)
+    String rx_message = "";
+    rx_message.reserve(64);
+    if (xSemaphoreTake(spiMutex, portMAX_DELAY) == pdTRUE)
     {
-      // got a packet -> parse it
-      handle_command(rx);
-      digitalWrite(ledPin, !digitalRead(ledPin)); // blink on RX
+      if (rx_flag)
+      {
+        rx_flag = false;
+        uint16_t state = lora.readData(rx_message);
+        if (state == RADIOLIB_ERR_NONE)
+        {
+          // got a packet -> parse it
+          handle_command(rx_message);
+          digitalToggle(ledPin);
 
-      // re-arm RX after reading
-      lora.startReceive();
+          // re-arm RX after reading
+          lora.startReceive();
+        }
+        else
+        {
+        }
+      }
+      xSemaphoreGive(spiMutex);
     }
-    else
+    if (Serial.available())
     {
+      String serial_input = Serial.readStringUntil('\n'); // Read serial input line
+      if (serial_input.length() > 0)
+      {
+        handle_command(serial_input); // Handle command from Serial input
+        digitalToggle(ledPin);
+      }
     }
     DELAY(100);
   }
@@ -638,7 +665,7 @@ void accept_command(void *)
 
 void handle_command(String rx_message)
 {
-  Serial.print("[RX] ");
+  // Serial.print("[RX] ");
   Serial.println(rx_message);
 
   // Repeats for at least 5 times before continuing
@@ -1129,6 +1156,12 @@ void print_data(void *)
 void set_tx_flag()
 {
   tx_flag = true;
+}
+
+void set_rx_flag()
+{
+  // we got a packet, set the flag
+  rx_flag = true;
 }
 
 void wakeup_isr()
