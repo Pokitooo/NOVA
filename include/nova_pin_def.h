@@ -2,6 +2,7 @@
 #define NOVA_PIN_DEF_H
 
 #include <Arduino.h>
+#include <Arduino_Extended.h>
 // Pins defination
 
 // SPI
@@ -30,6 +31,7 @@ constexpr uint16_t PIN_SCL = PA8;
 // GPIO
 constexpr uint16_t buzzerPin = PA0;
 constexpr uint16_t ledPin = PB5;
+constexpr uint16_t servoPin = PA1;
 
 // CURRENT ADC
 constexpr uint16_t VOUT_EXT = PB1;

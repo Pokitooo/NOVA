@@ -12,8 +12,9 @@
 
 #include <SparkFun_u-blox_GNSS_v3.h>
 #include <TinyGPS++.h>
-#include "ICM42688.h"
+#include <ICM42688.h>
 #include <Adafruit_BME280.h>
+#include <Servo.h>
 
 #include "SdFat.h"
 #include "RadioLib.h"
@@ -65,7 +66,7 @@ constexpr struct
 {
   float center_freq = 920.800'000f; // MHz
   float bandwidth = 125.f;          // kHz
-  uint8_t spreading_factor = 12;    // SF: 6 to 12
+  uint8_t spreading_factor = 9;    // SF: 6 to 12
   uint8_t coding_rate = 8;          // CR: 5 to 8
   uint8_t sync_word = 0x12;         // Private SX1262
   int8_t power = 22;                // up to 22 dBm for SX1262
@@ -82,6 +83,9 @@ constexpr size_t ADC_BITS(12);
 constexpr float ADC_DIVIDER = ((1 << ADC_BITS) - 1);
 constexpr float VREF = 3300;
 float voltageServo, volatgeEXT = 0.F;
+
+// Servo
+Servo servo;      // Create servo object
 
 // DATA
 struct Data
@@ -119,9 +123,9 @@ struct Data
 // Software filters
 constexpr size_t FILTER_ORDER = 4;
 constexpr double dt_base = 0.1;
-constexpr double covariance = 0.082;
-constexpr double alpha = 2.25e-6;
-constexpr double beta = 9.0e-4;
+constexpr double covariance = 0.01;
+constexpr double alpha = 0.;
+constexpr double beta = 0.;
 constexpr double G = 9.81;
 
 struct software_filters
@@ -224,6 +228,7 @@ void setup()
   digitalWrite(buzzerPin, 1);
   delay(100);
   digitalWrite(buzzerPin, 0);
+
   timer_buz.setOverflow(nova::config::BUZZER_ON_INTERVAL * 1000, MICROSEC_FORMAT);
   timer_buz.attachInterrupt([]
                             {
@@ -231,6 +236,8 @@ void setup()
   timer_buz.pause(); });
   timer_buz.pause();
   pinMode(ledPin, OUTPUT); // LED
+
+  servo.attach(servoPin);
 
   // variable
   static bool state;
@@ -280,13 +287,9 @@ void setup()
   s.reserve(256);
 
   // icm42688
-  uint8_t status = icm.begin();
+  uint16_t status = icm.begin();
   if (status > 0)
   {
-    icm.setAccelFS(ICM42688::gpm16);
-    icm.setGyroFS(ICM42688::dps2000);
-    icm.setAccelODR(ICM42688::odr25);
-    icm.setGyroODR(ICM42688::odr25);
     Serial.println("ICM Success");
   }
   Serial.print("ICM Status: ");
@@ -344,7 +347,7 @@ void setup()
       {
         sd_a([]
              {
-          // gpio_write << io_function::pull_low(nova::pins::pyro::SIG_A);
+          servo.write(180);
           data.pyro_a = nova::pyro_state_t::FIRED;
           flag_a             = false; });
       }
@@ -382,6 +385,7 @@ void setup()
   xTaskCreate(print_data, "", 1024, nullptr, 2, nullptr);
 
   xTaskCreate(fsm_eval, "", 1024, nullptr, 2, nullptr);
+  // xTaskCreate(pyro_cutoff, "", 1024, nullptr, 2, nullptr);
   // xTaskCreate(buzz, "", 1024, nullptr, 2, nullptr);
   vTaskStartScheduler();
 
@@ -559,7 +563,7 @@ void construct_data(void *)
         
         << data.last_ack
         << data.last_nack;
-    DELAY(1000);
+    DELAY(25);
   }
 }
 
@@ -596,8 +600,8 @@ void send_data(void *)
         xSemaphoreGive(spiMutex);
       }
     }
-    DELAY(&tx_interval);
     ++data.counter;
+    DELAY(tx_interval);
   }
 }
 
@@ -619,7 +623,7 @@ void save_data(void *)
       Serial.println("Data written and flushed.");
       xSemaphoreGive(spiMutex);
     }
-    DELAY(&log_interval);
+    DELAY(log_interval);
   }
 }
 
@@ -717,8 +721,7 @@ void handle_command(String rx_message)
   {
     if (data.ps != nova::state_t::IDLE_SAFE && data.ps != nova::state_t::RECOVERED_SAFE)
     {
-      // Change to Servo
-      // gpio_write << io_function::pull_high(pins::pyro::SIG_A);
+      servo.write(180);
       data.pyro_a = nova::pyro_state_t::FIRING;
     }
   }
@@ -957,7 +960,7 @@ void fsm_eval(void *)
 
       if (!fired)
       {
-        // gpio_write << io_function::pull_high(nova::pins::pyro::SIG_A); Change to servo
+        servo.write(180); //Deploy
         data.pyro_a = nova::pyro_state_t::FIRING;
         fired = true;
       }
