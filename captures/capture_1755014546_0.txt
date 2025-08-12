@@ -1,0 +1,1027 @@
+Transmission successful!
+Serial begin
+[SX1262] Starting to listen ... success!
+Transmission successful!
+Transmission successful!
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		hello 1240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+Transmission successful!
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+Transmission successful!
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz
+10
+[SX1262] Received packet!
+[SX1262] Data:		cmd arm240
+[SX1262] RSSI:		-45.00 dBm
+[SX1262] SNR:		10.50 dB
+[SX1262] Frequency error:	1272.94 Hz

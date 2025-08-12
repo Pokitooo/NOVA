@@ -211,7 +211,7 @@ extern void buzz(void *);
 
 extern void pyro(void *);
 
-extern void set_tx_flag();
+extern void set_rxflag();
 
 extern void buzzer_control(on_off_timer::interval_params *intervals_ms);
 
@@ -264,19 +264,19 @@ void setup()
       ;
 
   // LoRa
-  int16_t lora_state = lora.begin(params.center_freq,
-                                  params.bandwidth,
-                                  params.spreading_factor,
-                                  params.coding_rate,
-                                  params.sync_word,
-                                  params.power,
-                                  params.preamble_length,
-                                  0,
-                                  false);
+  uint16_t lora_state = lora.begin(params.center_freq,
+                                   params.bandwidth,
+                                   params.spreading_factor,
+                                   params.coding_rate,
+                                   params.sync_word,
+                                   params.power,
+                                   params.preamble_length,
+                                   0,
+                                   false);
   state = state || lora.explicitHeader();
   state = state || lora.setCRC(true);
   state = state || lora.autoLDRO();
-  attachInterrupt(LORA_DIO1, set_tx_flag, CHANGE);
+  lora.setPacketReceivedAction(set_rxflag);
   lora.startReceive();
 
   if (lora_state == RADIOLIB_ERR_NONE)
@@ -335,7 +335,6 @@ void setup()
   // ADC
   analogReadResolution(ADC_BITS);
 
-
   // Scheduler
   xTaskCreate(read_m10q, "", 2048, nullptr, 2, nullptr);
   xTaskCreate(read_bme, "", 2048, nullptr, 2, nullptr);
@@ -360,31 +359,45 @@ void setup()
 
 void loop() { DELAY(1); }
 
-void pyro(void *) {
-  auto pyro_cutoff = [] {
+void pyro(void *)
+{
+  auto pyro_cutoff = []
+  {
     static smart_delay sd_a(nova::config::PYRO_ACTIVATE_INTERVAL, millis);
     static smart_delay sd_b(nova::config::PYRO_ACTIVATE_INTERVAL, millis);
     static bool flag_a = false, flag_b = false;
 
-    if (data.pyro_a == nova::pyro_state_t::FIRING) {
-      if (!flag_a) { sd_a.reset(); flag_a = true; }
-      else {
-        sd_a([] {
+    if (data.pyro_a == nova::pyro_state_t::FIRING)
+    {
+      if (!flag_a)
+      {
+        sd_a.reset();
+        flag_a = true;
+      }
+      else
+      {
+        sd_a([]
+             {
           servo.write(180);
           data.pyro_a = nova::pyro_state_t::FIRED;
-          flag_a = false;
-        });
+          flag_a = false; });
       }
     }
 
-    if (data.pyro_b == nova::pyro_state_t::FIRING) {
-      if (!flag_b) { sd_b.reset(); flag_b = true; }
-      else {
-        sd_b([] {
+    if (data.pyro_b == nova::pyro_state_t::FIRING)
+    {
+      if (!flag_b)
+      {
+        sd_b.reset();
+        flag_b = true;
+      }
+      else
+      {
+        sd_b([]
+             {
           gpio_write << io_function::pull_low(pyroB);
           data.pyro_b = nova::pyro_state_t::FIRED;
-          flag_b = false;
-        });
+          flag_b = false; });
       }
     }
   };
@@ -393,7 +406,8 @@ void pyro(void *) {
   dispatcher.reset();
 
   // run dispatcher forever
-  for (;;) {
+  for (;;)
+  {
     dispatcher();
     DELAY(1); // yield ~1 tick; adjust if you want tighter timing
   }
@@ -591,34 +605,10 @@ void send_data(void *)
 {
   for (;;)
   {
-    static int16_t state;
-    static uint32_t t0, t;
-
-    if (tx_flag)
+    if (xSemaphoreTake(spiMutex, portMAX_DELAY) == pdTRUE)
     {
-      tx_flag = false;
-      t = millis();
-
-      if (state == RADIOLIB_ERR_NONE)
-      {
-        Serial.println("Transmission successful!");
-        Serial.printf("Used %d ms\n", t - t0);
-      }
-      else
-      {
-        Serial.print("Transmission failed! Error: ");
-        Serial.println(state);
-      }
-    }
-    else
-    {
-      if (xSemaphoreTake(spiMutex, portMAX_DELAY) == pdTRUE)
-      {
-        lora.startTransmit(constructed_data.c_str());
-        t0 = millis();
-        // digitalToggle(buzzerPin);
-        xSemaphoreGive(spiMutex);
-      }
+      lora.transmit(constructed_data.c_str());
+      xSemaphoreGive(spiMutex);
     }
     ++data.counter;
     DELAY(tx_interval);
@@ -647,83 +637,53 @@ void save_data(void *)
   }
 }
 
-// void accept_command(void *)
-// {
-//   for (;;)
-//   {
-//     String message = "";
-//     message.reserve(64);
-
-//     if (xSemaphoreTake(spiMutex, portMAX_DELAY) == pdTRUE)
-//     {
-//       Serial.println("Start receive");
-//       uint32_t packetSize = lora.getPacketLength();
-//       if (packetSize > 0)
-//       {
-//         Serial.println(packetSize);
-//         uint16_t state = lora.readData(message);
-//         if (state == RADIOLIB_ERR_NONE)
-//         {
-//           handle_command(message);
-//           Serial.println("handled");
-//         }
-//       }
-//       xSemaphoreGive(spiMutex);
-//     }
-
-//     //Serial
-//     if (Serial.available())
-//     {
-//       String serial_input = Serial.readStringUntil('\n'); // Read serial input line
-//       if (serial_input.length() > 0)
-//       {
-//         handle_command(serial_input); // Handle command from Serial input
-//         digitalToggle(ledPin);
-//       }
-//     }
-//     DELAY(100);
-//   }
-// }
-
-void accept_command(void *){
-  String msg; 
-  msg.reserve(64);
-
-  // ensure radio is in RX mode
+void accept_command(void *)
+{
   xSemaphoreTake(spiMutex, portMAX_DELAY);
   lora.startReceive();
   xSemaphoreGive(spiMutex);
 
-  for(;;){
-    // small sleep to avoid busy-looping
-    DELAY(1000);
+  for (;;)
+  {
+    if (rx_flag)
+    {                  // only run when TRUE
+      rx_flag = false; // clear first (avoid missing quick second packet)
 
-    // probe for a packet quickly
-    uint32_t pktLen = 0;
-    // (For SX126x, you can skip this and just try readData)
-    if (xSemaphoreTake(spiMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
-      msg = "";
-      int16_t state = lora.readData(msg);
-      xSemaphoreGive(spiMutex);
-
-      if (state == RADIOLIB_ERR_NONE) {
-        handle_command(msg);
-
-        // re-arm RX
-        xSemaphoreTake(spiMutex, portMAX_DELAY);
-        lora.startReceive();
+      if (xSemaphoreTake(spiMutex, portMAX_DELAY) == pdTRUE)
+      {
+        String rx_message;
+        rx_message.reserve(64);
+        int state = lora.readData(rx_message);
+        lora.startReceive(); // re-arm
         xSemaphoreGive(spiMutex);
+
+        if (state == RADIOLIB_ERR_NONE)
+        {
+          handle_command(rx_message);
+        }
       }
     }
+    else
+    { DELAY(100); }  
+    
+    // // Serial
+    // if (Serial.available())
+    // {
+    //   String serial_input = Serial.readStringUntil('\n'); // Read serial input line
+    //   if (serial_input.length() > 0)
+    //   {
+    //     handle_command(serial_input); // Handle command from Serial input
+    //     digitalToggle(ledPin);
+    //   }
+    // }
   }
 }
-
 
 void handle_command(String rx_message)
 {
   Serial.print("RX: ");
   Serial.println(rx_message);
-  
+
   if (rx_message.substring(0, 4) != "cmd ")
   {
     // Return if cmd header is invalid
@@ -1201,11 +1161,11 @@ void print_data(void *)
 
     Serial.println("==================\n");
 
-    DELAY(1000); 
+    DELAY(1000);
   }
 }
 
-void set_tx_flag()
+void set_rxflag()
 {
-  tx_flag = true;
+  rx_flag = true;
 }

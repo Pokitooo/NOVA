@@ -81,7 +81,8 @@ static void handleDownlink()
 
   String str;
   int16_t rc = lora.readData(str);
-
+  Serial.println(packetSize);
+  
   if (rc == RADIOLIB_ERR_NONE)
   {
     Serial.println(F("[SX1262] Received packet!"));
@@ -118,47 +119,35 @@ static void handleDownlink()
   }
 }
 
-void uplinkCommand() {
-  // Only proceed if we have a complete line ending with newline
-  if (Serial.available()) {
-    // Peek at the incoming byte without removing it
-    char firstChar = Serial.peek();
-    
-    // Ignore if the first character is not printable (likely noise)
-    if (firstChar < 32 || firstChar > 126) {
-      Serial.read(); // Discard bad byte
-      return;
-    }
+static void uplinkCommand() {
+  if (!Serial.available()) return;
 
-    // Read input until newline
-    String serial_input = Serial.readStringUntil('\n');
-    serial_input.trim(); // Remove spaces & CR
+  String line = Serial.readStringUntil('\n');
+  line.trim();
+  if (line.length() == 0) return;
 
-    // Ignore empty or invalid data
-    if (serial_input.length() == 0) {
-      return;
-    }
-
-    // Optional: Only accept if it starts with "cmd "
-    if (!serial_input.startsWith("cmd ")) {
-      Serial.println(F("Ignored: Not a valid command"));
-      return;
-    }
-
-    // Send via LoRa
-    lora.startTransmit(serial_input);
-    delay(100);
-
-    digitalToggle(ledPin);
-    Serial.println(F("Command sent"));
+  if (!line.startsWith("cmd ")) {
+    Serial.println(F("Ignored: Not a valid command"));
+    return;
   }
-  Serial.parseInt();
+
+  // Use blocking TX to keep state clean
+  int16_t rc = lora.transmit(line);
+  if (rc == RADIOLIB_ERR_NONE) {
+    Serial.println(F("Transmission successful!"));
+  } else {
+    Serial.print(F("TX failed, code ")); Serial.println(rc);
+  }
+
+  // ALWAYS return to RX
+  lora.startReceive();
 }
 
 
 void loop()
 {
   handleDownlink();
+  lora.startTransmit("Hello");
   uplinkCommand();
   delay(1000);
 }

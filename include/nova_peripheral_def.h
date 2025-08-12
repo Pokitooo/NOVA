@@ -100,4 +100,11 @@ namespace nova::config {
     }  // namespace details::assertions
 }  // namespace luna::config
 
+enum RadioMode {
+  RADIO_MODE_IDLE,
+  RADIO_MODE_TX,
+  RADIO_MODE_RX
+};
+volatile RadioMode currentMode = RADIO_MODE_IDLE;
+
 #endif
