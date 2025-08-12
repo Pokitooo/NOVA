@@ -30,6 +30,10 @@
 using time_type = uint32_t;
 using smart_delay = vt::smart_delay<time_type>;
 using on_off_timer = vt::on_off_timer<time_type>;
+using task_type = vt::task_t<vt::smart_delay, time_type>;
+
+template <size_t N>
+using dispatcher_type = vt::task_dispatcher<N, vt::smart_delay, time_type>;
 
 on_off_timer::interval_params buzzer_intervals(nova::config::BUZZER_ON_INTERVAL,
                                                nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_IDLE_INTERVAL));
@@ -66,7 +70,7 @@ constexpr struct
 {
   float center_freq = 920.800'000f; // MHz
   float bandwidth = 125.f;          // kHz
-  uint8_t spreading_factor = 9;    // SF: 6 to 12
+  uint8_t spreading_factor = 9;     // SF: 6 to 12
   uint8_t coding_rate = 8;          // CR: 5 to 8
   uint8_t sync_word = 0x12;         // Private SX1262
   int8_t power = 22;                // up to 22 dBm for SX1262
@@ -85,7 +89,7 @@ constexpr float VREF = 3300;
 float voltageServo, volatgeEXT = 0.F;
 
 // Servo
-Servo servo;      // Create servo object
+Servo servo; // Create servo object
 
 // DATA
 struct Data
@@ -160,6 +164,7 @@ bme_ref_t bme_ref = {bme1, data.temp, data.press, data.altitude, filters.bme_pre
 bool sdstate;
 
 // Software control
+dispatcher_type<32> dispatcher;
 bool launch_override = false;
 struct
 {
@@ -204,9 +209,11 @@ extern void fsm_eval(void *);
 
 extern void buzz(void *);
 
+extern void pyro(void *);
+
 extern void set_tx_flag();
 
-extern void set_rx_flag();
+extern void buzzer_control(on_off_timer::interval_params *intervals_ms);
 
 template <typename SdType, typename FileType>
 extern void init_storage(FsUtil<SdType, FileType> &sd_util_instance);
@@ -224,7 +231,7 @@ void setup()
   spi1.begin();
 
   // GPIO
-  pinMode(buzzerPin, OUTPUT); // BUZZER
+  pinMode(to_digital(buzzerPin), OUTPUT); // BUZZER
   digitalWrite(buzzerPin, 1);
   delay(100);
   digitalWrite(buzzerPin, 0);
@@ -232,12 +239,12 @@ void setup()
   timer_buz.setOverflow(nova::config::BUZZER_ON_INTERVAL * 1000, MICROSEC_FORMAT);
   timer_buz.attachInterrupt([]
                             {
-  gpio_write << io_function::pull_low(digitalPinToPinName(buzzerPin));
+  gpio_write << io_function::pull_low(buzzerPin);
   timer_buz.pause(); });
   timer_buz.pause();
-  pinMode(ledPin, OUTPUT); // LED
+  pinMode(to_digital(ledPin), OUTPUT); // LED
 
-  servo.attach(servoPin);
+  servo.attach(servoPin); // Servo
 
   // variable
   static bool state;
@@ -257,29 +264,28 @@ void setup()
       ;
 
   // LoRa
-  int16_t ls = lora.begin(params.center_freq,
-                          params.bandwidth,
-                          params.spreading_factor,
-                          params.coding_rate,
-                          params.sync_word,
-                          params.power,
-                          params.preamble_length,
-                          0,
-                          false);
+  int16_t lora_state = lora.begin(params.center_freq,
+                                  params.bandwidth,
+                                  params.spreading_factor,
+                                  params.coding_rate,
+                                  params.sync_word,
+                                  params.power,
+                                  params.preamble_length,
+                                  0,
+                                  false);
   state = state || lora.explicitHeader();
   state = state || lora.setCRC(true);
   state = state || lora.autoLDRO();
-  lora.setPacketReceivedAction(set_rx_flag);
   attachInterrupt(LORA_DIO1, set_tx_flag, CHANGE);
 
-  if (ls == RADIOLIB_ERR_NONE)
+  if (lora_state == RADIOLIB_ERR_NONE)
   {
     Serial.println("SX1262 initialized successfully!");
   }
   else
   {
     Serial.print("Initialization failed! Error: ");
-    Serial.println(ls);
+    Serial.println(lora_state);
     while (true)
       ;
   }
@@ -328,48 +334,6 @@ void setup()
   // ADC
   analogReadResolution(ADC_BITS);
 
-  // PYRO
-  auto pyro_cutoff = []
-  {
-    static smart_delay sd_a(nova::config::PYRO_ACTIVATE_INTERVAL, millis);
-    static smart_delay sd_b(nova::config::PYRO_ACTIVATE_INTERVAL, millis);
-    static bool flag_a = false;
-    static bool flag_b = false;
-
-    if (data.pyro_a == nova::pyro_state_t::FIRING)
-    {
-      if (!flag_a)
-      {
-        sd_a.reset();
-        flag_a = true;
-      }
-      else
-      {
-        sd_a([]
-             {
-          servo.write(180);
-          data.pyro_a = nova::pyro_state_t::FIRED;
-          flag_a             = false; });
-      }
-    }
-
-    if (data.pyro_b == nova::pyro_state_t::FIRING)
-    {
-      if (!flag_b)
-      {
-        sd_b.reset();
-        flag_b = true;
-      }
-      else
-      {
-        sd_b([]
-             {
-          // gpio_write << io_function::pull_low(nova::pins::pyro::SIG_B);
-          data.pyro_b = nova::pyro_state_t::FIRED;
-          flag_b             = false; });
-      }
-    }
-  };
 
   // Scheduler
   xTaskCreate(read_m10q, "", 2048, nullptr, 2, nullptr);
@@ -385,18 +349,73 @@ void setup()
   xTaskCreate(print_data, "", 1024, nullptr, 2, nullptr);
 
   xTaskCreate(fsm_eval, "", 1024, nullptr, 2, nullptr);
-  // xTaskCreate(pyro_cutoff, "", 1024, nullptr, 2, nullptr);
-  // xTaskCreate(buzz, "", 1024, nullptr, 2, nullptr);
+  xTaskCreate(pyro, "", 1024, nullptr, 2, nullptr);
+  xTaskCreate(buzz, "", 1024, nullptr, 2, nullptr);
   vTaskStartScheduler();
 
   // Low power mode
   LowPower.begin();
 }
 
+void loop() { dispatcher(); }
+
+void pyro(void *) {
+  auto pyro_cutoff = [] {
+    static smart_delay sd_a(nova::config::PYRO_ACTIVATE_INTERVAL, millis);
+    static smart_delay sd_b(nova::config::PYRO_ACTIVATE_INTERVAL, millis);
+    static bool flag_a = false, flag_b = false;
+
+    if (data.pyro_a == nova::pyro_state_t::FIRING) {
+      if (!flag_a) { sd_a.reset(); flag_a = true; }
+      else {
+        sd_a([] {
+          servo.write(180);
+          data.pyro_a = nova::pyro_state_t::FIRED;
+          flag_a = false;
+        });
+      }
+    }
+
+    if (data.pyro_b == nova::pyro_state_t::FIRING) {
+      if (!flag_b) { sd_b.reset(); flag_b = true; }
+      else {
+        sd_b([] {
+          gpio_write << io_function::pull_low(pyroB);
+          data.pyro_b = nova::pyro_state_t::FIRED;
+          flag_b = false;
+        });
+      }
+    }
+  };
+
+  dispatcher << task_type(pyro_cutoff, 0);
+  dispatcher.reset();
+
+  // run dispatcher forever
+  for (;;) {
+    dispatcher();
+    DELAY(1); // yield ~1 tick; adjust if you want tighter timing
+  }
+}
+
 void buzz(void *)
 {
   for (;;)
   {
+    buzzer_control(&buzzer_intervals);
+  }
+}
+
+void buzzer_control(on_off_timer::interval_params *intervals_ms)
+{
+  for (;;)
+  {
+    static time_type prev_on = intervals_ms->t_on;
+    static time_type prev_off = intervals_ms->t_off;
+    static nova::state_t prev_state = nova::state_t::STARTUP;
+
+    // On-off timer
+    static on_off_timer timer(intervals_ms->t_on, intervals_ms->t_off, millis);
     // digitalToggle(buzzerPin);
     digitalToggle(ledPin);
     DELAY(500);
@@ -560,7 +579,7 @@ void construct_data(void *)
 
         << data.imu.acc.x << data.imu.acc.y << data.imu.acc.z
         << data.imu.gyro.x << data.imu.gyro.y << data.imu.gyro.z
-        
+
         << data.last_ack
         << data.last_nack;
     DELAY(25);
@@ -635,25 +654,22 @@ void accept_command(void *)
     rx_message.reserve(64);
     if (xSemaphoreTake(spiMutex, portMAX_DELAY) == pdTRUE)
     {
-      if (rx_flag)
+      u_int16_t packetSize = lora.getPacketLength();
+      if (packetSize > 0)
       {
-        rx_flag = false;
         uint16_t state = lora.readData(rx_message);
         if (state == RADIOLIB_ERR_NONE)
         {
           // got a packet -> parse it
           handle_command(rx_message);
-          digitalToggle(ledPin);
 
-          // re-arm RX after reading
           lora.startReceive();
-        }
-        else
-        {
         }
       }
       xSemaphoreGive(spiMutex);
     }
+
+    //Serial
     if (Serial.available())
     {
       String serial_input = Serial.readStringUntil('\n'); // Read serial input line
@@ -669,10 +685,6 @@ void accept_command(void *)
 
 void handle_command(String rx_message)
 {
-  // Serial.print("[RX] ");
-  Serial.println(rx_message);
-
-  // Repeats for at least 5 times before continuing
   if (rx_message.substring(0, 4) != "cmd ")
   {
     // Return if cmd header is invalid
@@ -729,7 +741,7 @@ void handle_command(String rx_message)
   {
     if (data.ps != nova::state_t::IDLE_SAFE && data.ps != nova::state_t::RECOVERED_SAFE)
     {
-      // gpio_write << io_function::pull_high(pins::pyro::SIG_B);
+      gpio_write << io_function::pull_high(pyroB);
       data.pyro_b = nova::pyro_state_t::FIRING;
     }
   }
@@ -755,15 +767,13 @@ void handle_command(String rx_message)
   else if (command == "sleep")
   {
     // <--- Put the device into deep sleep mode (power saving) --->
-    digitalWrite(buzzerPin, 0);
-    digitalWrite(ledPin, 0);
+    PINS_OFF;
     LowPower.deepSleep();
   }
   else if (command == "shutdown")
   {
     // <--- Shutdown the device --->
-    digitalWrite(buzzerPin, 0);
-    digitalWrite(ledPin, 0);
+    PINS_OFF;
 
     if (sdstate)
     {
@@ -960,7 +970,7 @@ void fsm_eval(void *)
 
       if (!fired)
       {
-        servo.write(180); //Deploy
+        servo.write(180); // Deploy
         data.pyro_a = nova::pyro_state_t::FIRING;
         fired = true;
       }
@@ -1019,7 +1029,7 @@ void fsm_eval(void *)
 
       if (!fired)
       {
-        // gpio_write << io_function::pull_high(nova::pins::pyro::SIG_B); //Change to solenoid
+        gpio_write << io_function::pull_high(pyroB); // Change to solenoid
         data.pyro_b = nova::pyro_state_t::FIRING;
         fired = true;
       }
@@ -1152,27 +1162,11 @@ void print_data(void *)
 
     Serial.println("==================\n");
 
-    DELAY(1000); // Use vTaskDelay if FreeRTOS
+    DELAY(1000); 
   }
 }
 
 void set_tx_flag()
 {
   tx_flag = true;
-}
-
-void set_rx_flag()
-{
-  // we got a packet, set the flag
-  rx_flag = true;
-}
-
-void wakeup_isr()
-{
-  wake_flag = true;
-}
-
-void loop()
-{
-  DELAY(1);
 }

@@ -60,7 +60,7 @@ namespace nova::config {
         constexpr uint32_t MAIN_DEPLOYMENT_TON = 200ul;          // 200 ms
         constexpr uint32_t LANDING_TON         = 5000ul;         // 200 ms
         constexpr double ACC_OFFSET            = 21.7278762219446;
-        constexpr double LAUNCH_ACC            = 40.0 - nova::config::alg::ACC_OFFSET;           // 40 m/s^2
+        constexpr double LAUNCH_ACC            = 62.7 + nova::config::alg::ACC_OFFSET;           // 40 m/s^2
         constexpr double APOGEE_VEL            = 10.0;           // m/s
         constexpr double MAIN_ALTITUDE         = 450.f + 100.f;  // m
     }  // namespace alg

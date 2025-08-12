@@ -17,11 +17,11 @@ constexpr struct {
   uint16_t preamble_length = 16;
 } params;
 
-constexpr uint32_t TX_INTERVAL_MS = 1000;   // TX interval
 volatile bool txFlag = false;               // TX trigger flag
 
-static uint32_t lastTxMs = 0;
-static uint32_t txCount  = 0;
+void onTxDone() {
+  txFlag = true;
+}
 
 void setup() {
   Serial.begin(460800);
@@ -47,6 +47,7 @@ void setup() {
   lora.explicitHeader();
   lora.setCRC(true);
   lora.autoLDRO();
+  lora.setDio1Action(onTxDone);
 
   Serial.print(F("[SX1262] Starting to listen ... "));
   rc = lora.startReceive();
@@ -96,32 +97,52 @@ static void handleDownlink() {
   }
 }
 
-static void doUplinkIfDue() {
-  uint32_t now = millis();
-  if (!txFlag) return;  // Only send if flag is set
-  if (now - lastTxMs < TX_INTERVAL_MS) return;
+void uplinkCommand() {
+  if (Serial.available()) {
+    static char buf[256];
+    size_t n = 0;
 
-  String payload = "ping " + String(txCount++);
-  int16_t rc = lora.transmit(payload);
-  if (rc == RADIOLIB_ERR_NONE) {
-    Serial.print(F("[SX1262] Uplink sent: "));
-    Serial.println(payload);
-  } else {
-    Serial.print(F("[SX1262] TX failed, code "));
-    Serial.println(rc);
+    // Read all available serial input
+    while (Serial.available() && n < sizeof(buf) - 1) {
+      int c = Serial.read();
+      if (c < 0) break;
+      buf[n++] = (char)c;
+      delayMicroseconds(200); // small pacing for serial read
+    }
+    buf[n] = '\0';
+
+    // Trim trailing CR/LF
+    while (n && (buf[n - 1] == '\r' || buf[n - 1] == '\n')) {
+      buf[--n] = '\0';
+    }
+    if (n == 0) return;
+
+    // Start non-blocking LoRa transmit
+    int state = lora.startTransmit((uint8_t*)buf, n);
+    if (state != RADIOLIB_ERR_NONE) {
+      Serial.print("startTransmit failed, code ");
+      Serial.println(state);
+      return;
+    }
+
+    // Wait for TX complete
+    while (!txFlag) {
+      yield();
+    }
+    txFlag = false;
+
+    // Finalize TX
+    state = lora.finishTransmit();
+    if (state == RADIOLIB_ERR_NONE) {
+      Serial.println("[TX] sent.");
+    } else {
+      Serial.print("finishTransmit failed, code ");
+      Serial.println(state);
+    }
   }
-
-  rc = lora.startReceive();
-  if (rc != RADIOLIB_ERR_NONE) {
-    Serial.print(F("[SX1262] startReceive after TX failed, code "));
-    Serial.println(rc);
-  }
-
-  lastTxMs = now;
-  txFlag = false; // Reset flag after sending
 }
 
 void loop() {
   handleDownlink();
-  doUplinkIfDue();
+  uplinkCommand();
 }
