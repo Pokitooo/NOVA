@@ -7,23 +7,26 @@ SPIClass spi1(PIN_SPI_MOSI1, PIN_SPI_MISO1, PIN_SPI_SCK1);
 SPISettings lora_spi_settings(4'000'000, MSBFIRST, SPI_MODE0);
 SX1262 lora = new Module(LORA_NSS, LORA_DIO1, LORA_NRST, LORA_BUSY, spi1, lora_spi_settings);
 
-constexpr struct {
-  float   center_freq      = 920.800'000f;  // MHz
-  float   bandwidth        = 125.f;         // kHz
-  uint8_t spreading_factor = 9;             // 6..12
-  uint8_t coding_rate      = 8;             // 5..8
-  uint8_t sync_word        = 0x12;          // Private
-  int8_t  power            = 22;            // dBm
-  uint16_t preamble_length = 16;
+constexpr struct
+{
+  float center_freq = 920.800'000f; // MHz
+  float bandwidth = 125.f;          // kHz
+  uint8_t spreading_factor = 9;     // SF: 6 to 12
+  uint8_t coding_rate = 6;          // CR: 5 to 8
+  uint8_t sync_word = 0x12;         // Private SX1262
+  int8_t power = 10;                // up to 22 dBm for SX1262
+  uint16_t preamble_length = 10;
 } params;
 
-volatile bool txFlag = false;               // TX trigger flag
+volatile bool txFlag = false; // TX trigger flag
 
-void onTxDone() {
+void onTxDone()
+{
   txFlag = true;
 }
 
-void setup() {
+void setup()
+{
   Serial.begin(460800);
   delay(2000);
   Serial.println("Serial begin");
@@ -38,10 +41,14 @@ void setup() {
                           params.preamble_length,
                           0,
                           false);
-  if (rc != RADIOLIB_ERR_NONE) {
+  if (rc != RADIOLIB_ERR_NONE)
+  {
     Serial.print("Initialization failed! Error: ");
     Serial.println(rc);
-    while (true) { delay(10); }
+    while (true)
+    {
+      delay(10);
+    }
   }
 
   lora.explicitHeader();
@@ -51,23 +58,32 @@ void setup() {
 
   Serial.print(F("[SX1262] Starting to listen ... "));
   rc = lora.startReceive();
-  if (rc == RADIOLIB_ERR_NONE) {
+  if (rc == RADIOLIB_ERR_NONE)
+  {
     Serial.println(F("success!"));
-  } else {
+  }
+  else
+  {
     Serial.print(F("failed, code "));
     Serial.println(rc);
-    while (true) { delay(10); }
+    while (true)
+    {
+      delay(10);
+    }
   }
 }
 
-static void handleDownlink() {
+static void handleDownlink()
+{
   int packetSize = lora.getPacketLength();
-  if (packetSize <= 0) return;
+  if (packetSize <= 0)
+    return;
 
   String str;
   int16_t rc = lora.readData(str);
 
-  if (rc == RADIOLIB_ERR_NONE) {
+  if (rc == RADIOLIB_ERR_NONE)
+  {
     Serial.println(F("[SX1262] Received packet!"));
     Serial.print(F("[SX1262] Data:\t\t"));
     Serial.println(str);
@@ -85,64 +101,64 @@ static void handleDownlink() {
     Serial.println(F(" Hz"));
 
     // Example: set txFlag based on command
-    if (str == "cmd tx") {
+    if (str == "cmd tx")
+    {
       txFlag = true;
       Serial.println(F("[SX1262] TX flag set!"));
     }
-  } else if (rc == RADIOLIB_ERR_CRC_MISMATCH) {
+  }
+  else if (rc == RADIOLIB_ERR_CRC_MISMATCH)
+  {
     Serial.println(F("CRC error!"));
-  } else {
+  }
+  else
+  {
     Serial.print(F("readData failed, code "));
     Serial.println(rc);
   }
 }
 
 void uplinkCommand() {
+  // Only proceed if we have a complete line ending with newline
   if (Serial.available()) {
-    static char buf[256];
-    size_t n = 0;
-
-    // Read all available serial input
-    while (Serial.available() && n < sizeof(buf) - 1) {
-      int c = Serial.read();
-      if (c < 0) break;
-      buf[n++] = (char)c;
-      delayMicroseconds(200); // small pacing for serial read
-    }
-    buf[n] = '\0';
-
-    // Trim trailing CR/LF
-    while (n && (buf[n - 1] == '\r' || buf[n - 1] == '\n')) {
-      buf[--n] = '\0';
-    }
-    if (n == 0) return;
-
-    // Start non-blocking LoRa transmit
-    int state = lora.startTransmit((uint8_t*)buf, n);
-    if (state != RADIOLIB_ERR_NONE) {
-      Serial.print("startTransmit failed, code ");
-      Serial.println(state);
+    // Peek at the incoming byte without removing it
+    char firstChar = Serial.peek();
+    
+    // Ignore if the first character is not printable (likely noise)
+    if (firstChar < 32 || firstChar > 126) {
+      Serial.read(); // Discard bad byte
       return;
     }
 
-    // Wait for TX complete
-    while (!txFlag) {
-      yield();
-    }
-    txFlag = false;
+    // Read input until newline
+    String serial_input = Serial.readStringUntil('\n');
+    serial_input.trim(); // Remove spaces & CR
 
-    // Finalize TX
-    state = lora.finishTransmit();
-    if (state == RADIOLIB_ERR_NONE) {
-      Serial.println("[TX] sent.");
-    } else {
-      Serial.print("finishTransmit failed, code ");
-      Serial.println(state);
+    // Ignore empty or invalid data
+    if (serial_input.length() == 0) {
+      return;
     }
+
+    // Optional: Only accept if it starts with "cmd "
+    if (!serial_input.startsWith("cmd ")) {
+      Serial.println(F("Ignored: Not a valid command"));
+      return;
+    }
+
+    // Send via LoRa
+    lora.startTransmit(serial_input);
+    delay(100);
+
+    digitalToggle(ledPin);
+    Serial.println(F("Command sent"));
   }
+  Serial.parseInt();
 }
 
-void loop() {
+
+void loop()
+{
   handleDownlink();
   uplinkCommand();
+  delay(1000);
 }

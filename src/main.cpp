@@ -71,10 +71,10 @@ constexpr struct
   float center_freq = 920.800'000f; // MHz
   float bandwidth = 125.f;          // kHz
   uint8_t spreading_factor = 9;     // SF: 6 to 12
-  uint8_t coding_rate = 8;          // CR: 5 to 8
+  uint8_t coding_rate = 6;          // CR: 5 to 8
   uint8_t sync_word = 0x12;         // Private SX1262
-  int8_t power = 22;                // up to 22 dBm for SX1262
-  uint16_t preamble_length = 16;
+  int8_t power = 10;                // up to 22 dBm for SX1262
+  uint16_t preamble_length = 10;
 } params;
 
 SX1262 lora = new Module(LORA_NSS, LORA_DIO1, LORA_NRST, LORA_BUSY, spi1, lora_spi_settings);
@@ -277,6 +277,7 @@ void setup()
   state = state || lora.setCRC(true);
   state = state || lora.autoLDRO();
   attachInterrupt(LORA_DIO1, set_tx_flag, CHANGE);
+  lora.startReceive();
 
   if (lora_state == RADIOLIB_ERR_NONE)
   {
@@ -357,7 +358,7 @@ void setup()
   LowPower.begin();
 }
 
-void loop() { dispatcher(); }
+void loop() { DELAY(1); }
 
 void pyro(void *) {
   auto pyro_cutoff = [] {
@@ -646,45 +647,83 @@ void save_data(void *)
   }
 }
 
-void accept_command(void *)
-{
-  for (;;)
-  {
-    String rx_message = "";
-    rx_message.reserve(64);
-    if (xSemaphoreTake(spiMutex, portMAX_DELAY) == pdTRUE)
-    {
-      u_int16_t packetSize = lora.getPacketLength();
-      if (packetSize > 0)
-      {
-        uint16_t state = lora.readData(rx_message);
-        if (state == RADIOLIB_ERR_NONE)
-        {
-          // got a packet -> parse it
-          handle_command(rx_message);
+// void accept_command(void *)
+// {
+//   for (;;)
+//   {
+//     String message = "";
+//     message.reserve(64);
 
-          lora.startReceive();
-        }
-      }
+//     if (xSemaphoreTake(spiMutex, portMAX_DELAY) == pdTRUE)
+//     {
+//       Serial.println("Start receive");
+//       uint32_t packetSize = lora.getPacketLength();
+//       if (packetSize > 0)
+//       {
+//         Serial.println(packetSize);
+//         uint16_t state = lora.readData(message);
+//         if (state == RADIOLIB_ERR_NONE)
+//         {
+//           handle_command(message);
+//           Serial.println("handled");
+//         }
+//       }
+//       xSemaphoreGive(spiMutex);
+//     }
+
+//     //Serial
+//     if (Serial.available())
+//     {
+//       String serial_input = Serial.readStringUntil('\n'); // Read serial input line
+//       if (serial_input.length() > 0)
+//       {
+//         handle_command(serial_input); // Handle command from Serial input
+//         digitalToggle(ledPin);
+//       }
+//     }
+//     DELAY(100);
+//   }
+// }
+
+void accept_command(void *){
+  String msg; 
+  msg.reserve(64);
+
+  // ensure radio is in RX mode
+  xSemaphoreTake(spiMutex, portMAX_DELAY);
+  lora.startReceive();
+  xSemaphoreGive(spiMutex);
+
+  for(;;){
+    // small sleep to avoid busy-looping
+    DELAY(1000);
+
+    // probe for a packet quickly
+    uint32_t pktLen = 0;
+    // (For SX126x, you can skip this and just try readData)
+    if (xSemaphoreTake(spiMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+      msg = "";
+      int16_t state = lora.readData(msg);
       xSemaphoreGive(spiMutex);
-    }
 
-    //Serial
-    if (Serial.available())
-    {
-      String serial_input = Serial.readStringUntil('\n'); // Read serial input line
-      if (serial_input.length() > 0)
-      {
-        handle_command(serial_input); // Handle command from Serial input
-        digitalToggle(ledPin);
+      if (state == RADIOLIB_ERR_NONE) {
+        handle_command(msg);
+
+        // re-arm RX
+        xSemaphoreTake(spiMutex, portMAX_DELAY);
+        lora.startReceive();
+        xSemaphoreGive(spiMutex);
       }
     }
-    DELAY(100);
   }
 }
 
+
 void handle_command(String rx_message)
 {
+  Serial.print("RX: ");
+  Serial.println(rx_message);
+  
   if (rx_message.substring(0, 4) != "cmd ")
   {
     // Return if cmd header is invalid
