@@ -11,11 +11,11 @@ constexpr struct
 {
   float center_freq = 920.800'000f; // MHz
   float bandwidth = 125.f;          // kHz
-  uint8_t spreading_factor = 9;     // SF: 6 to 12
-  uint8_t coding_rate = 6;          // CR: 5 to 8
+  uint8_t spreading_factor = 7;     // SF: 6 to 12
+  uint8_t coding_rate = 8;          // CR: 5 to 8
   uint8_t sync_word = 0x12;         // Private SX1262
   int8_t power = 10;                // up to 22 dBm for SX1262
-  uint16_t preamble_length = 10;
+  uint16_t preamble_length = 16;
 } params;
 
 volatile bool txFlag = false; // TX trigger flag

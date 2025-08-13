@@ -1,10 +1,10 @@
 #include <Arduino.h>
 #include <lib_xcore>
 #include <STM32FreeRTOS.h>
+#include <STM32LowPower.h>
 #include "vt_linalg"
 #include "vt_kalman"
 #include "Arduino_Extended.h"
-#include <STM32LowPower.h>
 #include "File_Utility.h"
 
 #include <Wire.h>
@@ -70,11 +70,11 @@ constexpr struct
 {
   float center_freq = 920.800'000f; // MHz
   float bandwidth = 125.f;          // kHz
-  uint8_t spreading_factor = 9;     // SF: 6 to 12
-  uint8_t coding_rate = 6;          // CR: 5 to 8
+  uint8_t spreading_factor = 7;     // SF: 6 to 12
+  uint8_t coding_rate = 8;          // CR: 5 to 8
   uint8_t sync_word = 0x12;         // Private SX1262
   int8_t power = 10;                // up to 22 dBm for SX1262
-  uint16_t preamble_length = 10;
+  uint16_t preamble_length = 16;
 } params;
 
 SX1262 lora = new Module(LORA_NSS, LORA_DIO1, LORA_NRST, LORA_BUSY, spi1, lora_spi_settings);
@@ -124,6 +124,42 @@ struct Data
 
 } data;
 
+// Software filters
+constexpr size_t FILTER_ORDER = 4;
+constexpr double dt_base = 0.1;
+constexpr double covariance = 0.01;
+constexpr double alpha = 0.;
+constexpr double beta = 0.;
+constexpr double G = 9.81;
+
+struct software_filters
+{
+  vt::kf_pos<FILTER_ORDER> bme_pres{dt_base, covariance, alpha, beta};
+
+  struct
+  {
+    vec3_u<vt::kf_pos<4>> acc{dt_base, covariance, alpha, beta};
+    vec3_u<vt::kf_pos<4>> gyro{dt_base, covariance, alpha, beta};
+  } imu_1;
+
+  vt::kf_pos<FILTER_ORDER> altitude{dt_base, covariance, alpha, beta};
+  vt::kf_acc<FILTER_ORDER> acceleration{dt_base, covariance, alpha, beta};
+} filters;
+
+struct bme_ref_t
+{
+  Adafruit_BME280 &bmef;
+  float &temp;
+  float &pres;
+  float &alt;
+  vt::kf_pos<FILTER_ORDER> &kf;
+
+  bme_ref_t(Adafruit_BME280 &t_bmef, float &t_temp, float &t_pres, float &t_alt, vt::kf_pos<FILTER_ORDER> &t_kf)
+      : bmef{t_bmef}, temp{t_temp}, pres{t_pres}, alt{t_alt}, kf{t_kf} {}
+};
+
+bme_ref_t bme_ref = {bme1, data.temp, data.press, data.altitude, filters.bme_pres};
+
 // State
 bool sdstate;
 
@@ -145,6 +181,20 @@ HardwareTimer timer_buz(TIM3);
 // variables
 volatile bool wake_flag = false;
 
+extern void read_m10q(void *);
+
+extern void read_gnss(void *);
+
+extern void readBme(bme_ref_t *bme);
+
+extern void read_bme(void *);
+
+extern void read_icm(void *);
+
+extern void synchronize_kf(void *);
+
+extern void read_current(void *);
+
 extern void construct_data(void *);
 
 extern void send_data(void *);
@@ -155,13 +205,18 @@ extern void accept_command(void *);
 
 extern void print_data(void *);
 
-// extern void fsm_eval(void *);
+extern void fsm_eval(void *);
 
-// extern void buzz(void *);
+extern void buzz(void *);
 
-// extern void pyro(void *);
+extern void pyro(void *);
 
 extern void set_rxflag();
+
+extern void buzzer_control(on_off_timer::interval_params *intervals_ms);
+
+template <typename SdType, typename FileType>
+extern void init_storage(FsUtil<SdType, FileType> &sd_util_instance);
 
 extern void handle_command(String rx_message);
 
@@ -196,6 +251,17 @@ void setup()
 
   // SPI
   spiMutex = xSemaphoreCreateMutex();
+
+  // SD
+  sdstate = sd_util.sd().begin(sd_config);
+  if (sdstate)
+  {
+    init_storage(sd_util);
+  }
+  Serial.printf("SD CARD: %s\n", sdstate ? "SUCCESS" : "FAILED");
+  if (!sdstate)
+    while (true)
+      ;
 
   // LoRa
   uint16_t lora_state = lora.begin(params.center_freq,
@@ -252,23 +318,39 @@ void setup()
     Serial.println("gps Success");
   }
 
+  // bme280(0x76)
+  float gnd = 0.f;
+
+  if (bme1.begin(0x76, &i2c3))
+  {
+    bme1.SAMPLING_X16;
+    for (size_t i = 0; i < 20; ++i)
+    {
+      readBme(&bme_ref);
+    }
+    gnd += data.altitude;
+  }
+  ground_truth.altitude_offset = gnd;
 
   // ADC
   analogReadResolution(ADC_BITS);
 
   // Scheduler
-  // xTaskCreate(read_m10q, "", 2048, nullptr, 2, nullptr);
-  // xTaskCreate(read_bme, "", 2048, nullptr, 2, nullptr);
-  // xTaskCreate(read_icm, "", 2048, nullptr, 2, nullptr);
-  // xTaskCreate(synchronize_kf, "", 1024, nullptr, 2, nullptr);
+  xTaskCreate(read_m10q, "", 2048, nullptr, 2, nullptr);
+  xTaskCreate(read_bme, "", 2048, nullptr, 2, nullptr);
+  xTaskCreate(read_icm, "", 2048, nullptr, 2, nullptr);
+  xTaskCreate(synchronize_kf, "", 1024, nullptr, 2, nullptr);
   // xTaskCreate(read_current, "", 2048, nullptr, 2, nullptr);
 
   xTaskCreate(construct_data, "", 1024, nullptr, 2, nullptr);
   xTaskCreate(send_data, "", 2048, nullptr, 2, nullptr);
-  // xTaskCreate(save_data, "", 2048, nullptr, 2, nullptr);
+  xTaskCreate(save_data, "", 2048, nullptr, 2, nullptr);
   xTaskCreate(accept_command, "", 2048, nullptr, 2, nullptr);
   // xTaskCreate(print_data, "", 1024, nullptr, 2, nullptr);
 
+  xTaskCreate(fsm_eval, "", 1024, nullptr, 2, nullptr);
+  xTaskCreate(pyro, "", 1024, nullptr, 2, nullptr);
+  xTaskCreate(buzz, "", 1024, nullptr, 2, nullptr);
   vTaskStartScheduler();
 
   // Low power mode
@@ -276,6 +358,218 @@ void setup()
 }
 
 void loop() { DELAY(1); }
+
+void pyro(void *)
+{
+  auto pyro_cutoff = []
+  {
+    static smart_delay sd_a(nova::config::PYRO_ACTIVATE_INTERVAL, millis);
+    static smart_delay sd_b(nova::config::PYRO_ACTIVATE_INTERVAL, millis);
+    static bool flag_a = false, flag_b = false;
+
+    if (data.pyro_a == nova::pyro_state_t::FIRING)
+    {
+      if (!flag_a)
+      {
+        sd_a.reset();
+        flag_a = true;
+      }
+      else
+      {
+        sd_a([]
+             {
+          servo.write(180);
+          data.pyro_a = nova::pyro_state_t::FIRED;
+          flag_a = false; });
+      }
+    }
+
+    if (data.pyro_b == nova::pyro_state_t::FIRING)
+    {
+      if (!flag_b)
+      {
+        sd_b.reset();
+        flag_b = true;
+      }
+      else
+      {
+        sd_b([]
+             {
+          gpio_write << io_function::pull_low(pyroB);
+          data.pyro_b = nova::pyro_state_t::FIRED;
+          flag_b = false; });
+      }
+    }
+  };
+
+  dispatcher << task_type(pyro_cutoff, 0);
+  dispatcher.reset();
+
+  // run dispatcher forever
+  for (;;)
+  {
+    dispatcher();
+    DELAY(1); // yield ~1 tick; adjust if you want tighter timing
+  }
+}
+
+void buzz(void *)
+{
+  for (;;)
+  {
+    buzzer_control(&buzzer_intervals);
+  }
+}
+
+void buzzer_control(on_off_timer::interval_params *intervals_ms)
+{
+  for (;;)
+  {
+    static time_type prev_on = intervals_ms->t_on;
+    static time_type prev_off = intervals_ms->t_off;
+    static nova::state_t prev_state = nova::state_t::STARTUP;
+
+    // On-off timer
+    static on_off_timer timer(intervals_ms->t_on, intervals_ms->t_off, millis);
+    // digitalToggle(buzzerPin);
+    digitalToggle(ledPin);
+    DELAY(500);
+  }
+}
+
+void read_m10q(void *)
+{
+  for (;;)
+  {
+    if (xSemaphoreTake(i2cMutex, portMAX_DELAY) == pdTRUE)
+    {
+      if (m10q.getPVT())
+      {
+        data.timestamp = m10q.getUnixEpoch(nova::config::UBLOX_CUSTOM_MAX_WAIT);
+        data.gps_latitude = static_cast<double>(m10q.getLatitude(nova::config::UBLOX_CUSTOM_MAX_WAIT)) * 1.e-7;
+        data.gps_longitude = static_cast<double>(m10q.getLongitude(nova::config::UBLOX_CUSTOM_MAX_WAIT)) * 1.e-7;
+        data.gps_altitude = static_cast<float>(m10q.getAltitudeMSL(nova::config::UBLOX_CUSTOM_MAX_WAIT)) * 1.e-3f;
+      }
+      xSemaphoreGive(i2cMutex);
+    }
+    DELAY(500);
+  }
+}
+
+void read_gnss(void *)
+{
+  for (;;)
+  {
+    while (gnssSerial.available())
+    {
+      lc86.encode(gnssSerial.read());
+    }
+
+    if (lc86.location.isUpdated())
+    {
+      data.timestamp = lc86.time.value();
+      data.gps_latitude = lc86.location.lat();
+      data.gps_longitude = lc86.location.lng();
+      data.gps_altitude = lc86.altitude.meters();
+    }
+    DELAY(500);
+  }
+}
+
+void read_bme(void *)
+{
+  for (;;)
+  {
+    if (xSemaphoreTake(i2cMutex, portMAX_DELAY) == pdTRUE)
+    {
+      readBme(&bme_ref);
+      xSemaphoreGive(i2cMutex);
+    }
+    DELAY(200);
+  }
+}
+
+void readBme(bme_ref_t *bme)
+{
+  static uint32_t t_prev = millis();
+
+  if (const float t = bme1.readTemperature(); t > 0.)
+  {
+    bme->temp = t;
+  }
+
+  if (const float p = bme1.readPressure() / 100.0F; p > 0.)
+  {
+    bme->kf.update_dt(millis() - t_prev);
+    bme->kf.kf.predict().update(p);
+    bme->pres = static_cast<float>(bme->kf.kf.state);
+  }
+
+  bme->alt = pressure_altitude(data.press);
+
+  t_prev = millis();
+}
+
+void read_icm(void *)
+{
+  for (;;)
+  {
+    static uint32_t t_prev = millis();
+
+    if (xSemaphoreTake(spiMutex, portMAX_DELAY) == pdTRUE)
+    {
+      icm.getAGT();
+      xSemaphoreGive(spiMutex);
+    }
+
+    data.imu.acc.x = icm.accX() * G;
+    data.imu.acc.y = icm.accY() * G;
+    data.imu.acc.z = icm.accZ() * G;
+    data.imu.gyro.x = icm.gyrX();
+    data.imu.gyro.y = icm.gyrY();
+    data.imu.gyro.z = icm.gyrZ();
+
+    for (size_t i = 0; i < 3; ++i)
+    {
+      const uint32_t dt = millis() - t_prev;
+      filters.imu_1.acc.values[i].update_dt(dt);
+      filters.imu_1.gyro.values[i].update_dt(dt);
+      filters.imu_1.acc.values[i].kf.predict().update(data.imu.acc.values[i]);
+      filters.imu_1.gyro.values[i].kf.predict().update(data.imu.gyro.values[i]);
+      data.imu.acc.values[i] = filters.imu_1.acc.values[i].kf.state;
+      data.imu.gyro.values[i] = filters.imu_1.gyro.values[i].kf.state;
+    }
+
+    t_prev = millis();
+    DELAY(200);
+  }
+}
+
+void synchronize_kf(void *)
+{
+  for (;;)
+  {
+    static uint32_t t_prev = millis();
+
+    const double total_acc = algorithm::root_sum_square(data.imu.acc.x, data.imu.acc.y, data.imu.acc.z);
+
+    filters.altitude.update_dt(millis() - t_prev);
+    filters.acceleration.update_dt(millis() - t_prev);
+    filters.altitude.kf.predict().update(data.altitude);
+    filters.acceleration.kf.predict().update(total_acc - G);
+
+    t_prev = millis();
+    DELAY(25);
+  }
+}
+
+void read_current(void *)
+{
+  for (;;)
+  {
+    voltageServo = analogRead(digitalPinToAnalogInput(VOUT_Servo)) / ADC_DIVIDER * VREF;
+  }
+}
 
 void construct_data(void *)
 {
@@ -313,6 +607,7 @@ void send_data(void *)
   {
     if (xSemaphoreTake(spiMutex, portMAX_DELAY) == pdTRUE)
     {
+
       lora.transmit(constructed_data.c_str());
       xSemaphoreGive(spiMutex);
     }
@@ -321,48 +616,68 @@ void send_data(void *)
   }
 }
 
+template <typename SdType, typename FileType>
+void init_storage(FsUtil<SdType, FileType> &sd_util_instance)
+{
+  sd_util_instance.find_file_name(THIS_FILE_PREFIX, THIS_FILE_EXTENSION);
+  sd_util_instance.template open_one<FsMode::WRITE>();
+}
+
+void save_data(void *)
+{
+  for (;;)
+  {
+    if (xSemaphoreTake(spiMutex, portMAX_DELAY) == pdTRUE)
+    {
+      sd_util.file() << constructed_data;
+      sd_util.flush_one();
+      Serial.println("Data written and flushed.");
+      xSemaphoreGive(spiMutex);
+    }
+    DELAY(log_interval);
+  }
+}
+
 void accept_command(void *)
 {
-  // Arm RX once before the loop
-  if (xSemaphoreTake(spiMutex, portMAX_DELAY) == pdTRUE)
-  {
-    lora.startReceive();
-    xSemaphoreGive(spiMutex);
-  }
+  xSemaphoreTake(spiMutex, portMAX_DELAY);
+  lora.startReceive();
+  xSemaphoreGive(spiMutex);
 
   for (;;)
   {
-    // Wait (without holding the mutex) for ISR to set the flag
-    if (!rx_flag)
+    if (rx_flag)
+    { // only run when TRUE
+      if (xSemaphoreTake(spiMutex, portMAX_DELAY) == pdTRUE)
+      {
+        String rx_message = "";
+        rx_message.reserve(64);
+        int state = lora.readData(rx_message);
+        lora.startReceive(); // re-arm
+        xSemaphoreGive(spiMutex);
+
+        if (state == RADIOLIB_ERR_NONE)
+        {
+          handle_command(rx_message);
+        }
+      }
+      rx_flag = false; // clear first (avoid missing quick second packet)
+    }
+    else
     {
-      DELAY(10);
-      continue;
+      DELAY(100);
     }
 
-    // Clear flag first to avoid missing a quick second packet
-    rx_flag = false;
-
-    // Now do the SPI/RadioLib work quickly under mutex
-    if (xSemaphoreTake(spiMutex, portMAX_DELAY) == pdTRUE)
-    {
-      String rx_message;
-      rx_message.reserve(64);
-
-      int state = lora.readData(rx_message); // packet already arrived
-      // Re-arm receiver for the next packet
-      lora.startReceive();
-
-      xSemaphoreGive(spiMutex);
-
-      if (state == RADIOLIB_ERR_NONE)
-      {
-        handle_command(rx_message);
-      }
-      else
-      {
-        // optional: handle errors
-      }
-    }
+    // // Serial
+    // if (Serial.available())
+    // {
+    //   String serial_input = Serial.readStringUntil('\n'); // Read serial input line
+    //   if (serial_input.length() > 0)
+    //   {
+    //     handle_command(serial_input); // Handle command from Serial input
+    //     digitalToggle(ledPin);
+    //   }
+    // }
   }
 }
 
@@ -447,7 +762,7 @@ void handle_command(String rx_message)
   else if (command == "zero")
   {
     // <--- Zero barometric altitude --->
-
+    readBme(&bme_ref);
     ground_truth.altitude_offset = data.press;
   }
   else if (command == "sleep")
@@ -487,6 +802,306 @@ void handle_command(String rx_message)
   }
 }
 
+void fsm_eval(void *)
+{
+  for (;;)
+  {
+    static bool state_satisfaction = false;
+    int32_t static launched_time = 0;
+    static algorithm::Sampler sampler[2];
+
+    const double alt_x = filters.altitude.kf.state_vector[0] - ground_truth.altitude_offset;
+    const double vel_x = filters.altitude.kf.state_vector[1];
+    const double acc = filters.acceleration.kf.state_vector[2];
+
+    switch (data.ps)
+    {
+    case nova::state_t::STARTUP:
+    {
+      // Next: always transfer
+      data.ps = nova::state_t::IDLE_SAFE;
+      break;
+    }
+    case nova::state_t::IDLE_SAFE:
+    {
+      //  <--- Next: wait for uplink --->
+      buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_IDLE_INTERVAL);
+      break;
+    }
+    case nova::state_t::ARMED:
+    {
+      // <--- Next: wait for uplink --->
+      buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_ARMED_INTERVAL);
+
+      if (launch_override)
+      {
+        data.ps = nova::state_t::PAD_PREOP;
+        tx_interval = nova::config::TX_PAD_PREOP_INTERVAL;
+        log_interval = nova::config::LOG_PAD_PREOP_INTERVAL;
+      }
+
+      break;
+    }
+    case nova::state_t::PAD_PREOP:
+    {
+      // !!!!! Next: DETECT launch !!!!!
+      buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_PAD_PREOP_INTERVAL);
+
+      static on_off_timer tim(nova::config::alg::LAUNCH_TON / 2, nova::config::alg::LAUNCH_TON / 2, millis);
+
+      if (!state_satisfaction)
+      {
+        sampler[0].add(acc >= nova::config::alg::LAUNCH_ACC);
+        sampler[1].add(acc >= nova::config::alg::LAUNCH_ACC);
+
+        tim.on_rising([&]
+                      {
+          if (sampler[0].vote<1, 1>()) {
+            state_satisfaction |= true;
+          }
+          sampler[0].reset(); });
+
+        tim.on_falling([&]
+                       {
+          if (sampler[1].vote<1, 1>()) {
+            state_satisfaction |= true;
+          }
+          sampler[1].reset(); });
+      }
+
+      state_satisfaction |= launch_override;
+
+      if (state_satisfaction)
+      {
+        launched_time = millis();
+        data.ps = nova::state_t::POWERED;
+        state_satisfaction = false;
+        sampler[0].reset();
+        sampler[1].reset();
+        tx_interval = nova::config::TX_ASCEND_INTERVAL;
+        log_interval = nova::config::LOG_ASCEND_INTERVAL;
+      }
+
+      break;
+    }
+    case nova::state_t::POWERED:
+    {
+      // !!!!! Next: DETECT motor burnout !!!!!
+      buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_ASCEND_INTERVAL);
+
+      static on_off_timer tim(nova::config::alg::BURNOUT_TON / 2, nova::config::alg::BURNOUT_TON / 2, millis);
+
+      if (!state_satisfaction)
+      {
+        sampler[0].add(acc < nova::config::alg::LAUNCH_ACC);
+        sampler[1].add(acc < nova::config::alg::LAUNCH_ACC);
+
+        tim.on_rising([&]
+                      {
+          if (sampler[0].vote<1, 1>()) {
+            state_satisfaction |= millis() - launched_time >= nova::config::TIME_TO_BURNOUT_MIN;
+          }
+          sampler[0].reset(); });
+
+        tim.on_falling([&]
+                       {
+          if (sampler[1].vote<1, 1>()) {
+            state_satisfaction |= millis() - launched_time >= nova::config::TIME_TO_BURNOUT_MIN;
+          }
+          sampler[1].reset(); });
+      }
+
+      state_satisfaction |= millis() - launched_time >= nova::config::TIME_TO_BURNOUT_MAX;
+
+      if (state_satisfaction)
+      {
+        data.ps = nova::state_t::COASTING;
+        state_satisfaction = false;
+        sampler[0].reset();
+        sampler[1].reset();
+      }
+
+      break;
+    }
+    case nova::state_t::COASTING:
+    {
+      // !!!!! Next: DETECT apogee !!!!!
+      buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_ASCEND_INTERVAL);
+
+      static on_off_timer tim(nova::config::alg::APOGEE_SLOW_TON / 2, nova::config::alg::APOGEE_SLOW_TON / 2, millis);
+
+      if (!state_satisfaction)
+      {
+        sampler[0].add(vel_x <= nova::config::alg::APOGEE_VEL);
+        sampler[1].add(vel_x <= nova::config::alg::APOGEE_VEL);
+
+        tim.on_rising([&]
+                      {
+          if (sampler[0].vote<1, 1>()) {
+            state_satisfaction |= millis() - launched_time >= nova::config::TIME_TO_APOGEE_MIN;
+          }
+          sampler[0].reset(); });
+
+        tim.on_falling([&]
+                       {
+          if (sampler[1].vote<1, 1>()) {
+            state_satisfaction |= millis() - launched_time >= nova::config::TIME_TO_APOGEE_MIN;
+          }
+          sampler[1].reset(); });
+
+        state_satisfaction |= millis() - launched_time >= nova::config::TIME_TO_APOGEE_MAX;
+      }
+
+      if (state_satisfaction)
+      {
+        data.ps = nova::state_t::DROGUE_DEPLOY;
+        state_satisfaction = false;
+        sampler[0].reset();
+        sampler[1].reset();
+      }
+
+      break;
+    }
+    case nova::state_t::DROGUE_DEPLOY:
+    {
+      // Next: activate and always transfer
+      buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_DESCEND_INTERVAL);
+
+      static bool fired = false;
+
+      if (!fired)
+      {
+        servo.write(180); // Deploy
+        data.pyro_a = nova::pyro_state_t::FIRING;
+        fired = true;
+      }
+      else if (data.pyro_a == nova::pyro_state_t::FIRED)
+      {
+        data.ps = nova::state_t::DROGUE_DESCEND;
+      }
+
+      break;
+    }
+    case nova::state_t::DROGUE_DESCEND:
+    {
+      // !!!!! Next: DETECT main deployment altitude !!!!!
+      buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_DESCEND_INTERVAL);
+
+      static on_off_timer tim(nova::config::alg::MAIN_DEPLOYMENT_TON / 2, nova::config::alg::MAIN_DEPLOYMENT_TON / 2, millis);
+
+      if (!state_satisfaction)
+      {
+        sampler[0].add(alt_x <= nova::config::alg::MAIN_ALTITUDE);
+        sampler[1].add(alt_x <= nova::config::alg::MAIN_ALTITUDE);
+
+        tim.on_rising([&]
+                      {
+          if (sampler[0].vote<1, 1>()) {
+            state_satisfaction |= true;
+          }
+          sampler[0].reset(); });
+
+        tim.on_falling([&]
+                       {
+          if (sampler[1].vote<1, 1>()) {
+            state_satisfaction |= true;
+          }
+          sampler[1].reset(); });
+      }
+
+      if (state_satisfaction)
+      {
+        data.ps = nova::state_t::MAIN_DEPLOY;
+        state_satisfaction = false;
+        sampler[0].reset();
+        sampler[1].reset();
+        tx_interval = nova::config::TX_DESCEND_INTERVAL;
+        log_interval = nova::config::LOG_DESCEND_INTERVAL;
+      }
+
+      break;
+    }
+    case nova::state_t::MAIN_DEPLOY:
+    {
+      // Next: activate and always transfer
+      buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_DESCEND_INTERVAL);
+
+      static bool fired = false;
+
+      if (!fired)
+      {
+        gpio_write << io_function::pull_high(pyroB); // Change to solenoid
+        data.pyro_b = nova::pyro_state_t::FIRING;
+        fired = true;
+      }
+      else if (data.pyro_b == nova::pyro_state_t::FIRED)
+      {
+        data.ps = nova::state_t::MAIN_DESCEND;
+      }
+
+      break;
+    }
+    case nova::state_t::MAIN_DESCEND:
+    {
+      // !!!!! Next: DETECT landing !!!!!
+      buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_DESCEND_INTERVAL);
+
+      static on_off_timer tim(nova::config::alg::LANDING_TON / 2, nova::config::alg::LANDING_TON / 2, millis);
+
+      if (!state_satisfaction)
+      {
+        const bool stable = algorithm::is_zero(vel_x, 0.5);
+        sampler[0].add(stable);
+        sampler[1].add(stable);
+
+        tim.on_rising([&]
+                      {
+          if (sampler[0].vote<1, 1>()) {
+            state_satisfaction |= true;
+          }
+          sampler[0].reset(); });
+
+        tim.on_falling([&]
+                       {
+          if (sampler[1].vote<1, 1>()) {
+            state_satisfaction |= true;
+          }
+          sampler[1].reset(); });
+      }
+
+      if (state_satisfaction)
+      {
+        data.ps = nova::state_t::LANDED;
+        state_satisfaction = false;
+        sampler[0].reset();
+        sampler[1].reset();
+        tx_interval = nova::config::TX_IDLE_INTERVAL;
+        log_interval = nova::config::LOG_IDLE_INTERVAL;
+      }
+
+      break;
+    }
+    case nova::state_t::LANDED:
+    {
+      // <--- Next: wait for uplink --->
+      buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_DESCEND_INTERVAL);
+
+      break;
+    }
+    case nova::state_t::RECOVERED_SAFE:
+    {
+      // Sink state (requires reboot)
+      buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_IDLE_INTERVAL);
+
+      do_nothing();
+      break;
+    }
+    default:
+      __builtin_unreachable();
+    }
+    DELAY(25);
+  }
+}
 
 void print_data(void *)
 {

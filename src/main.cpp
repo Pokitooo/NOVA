@@ -1,10 +1,10 @@
 #include <Arduino.h>
 #include <lib_xcore>
 #include <STM32FreeRTOS.h>
+#include <STM32LowPower.h>
 #include "vt_linalg"
 #include "vt_kalman"
 #include "Arduino_Extended.h"
-#include <STM32LowPower.h>
 #include "File_Utility.h"
 
 #include <Wire.h>
@@ -70,11 +70,11 @@ constexpr struct
 {
   float center_freq = 920.800'000f; // MHz
   float bandwidth = 125.f;          // kHz
-  uint8_t spreading_factor = 9;     // SF: 6 to 12
-  uint8_t coding_rate = 6;          // CR: 5 to 8
+  uint8_t spreading_factor = 7;     // SF: 6 to 12
+  uint8_t coding_rate = 8;          // CR: 5 to 8
   uint8_t sync_word = 0x12;         // Private SX1262
   int8_t power = 10;                // up to 22 dBm for SX1262
-  uint16_t preamble_length = 10;
+  uint16_t preamble_length = 16;
 } params;
 
 SX1262 lora = new Module(LORA_NSS, LORA_DIO1, LORA_NRST, LORA_BUSY, spi1, lora_spi_settings);
@@ -245,6 +245,7 @@ void setup()
   pinMode(to_digital(ledPin), OUTPUT); // LED
 
   servo.attach(servoPin); // Servo
+  servo.write(180);
 
   // variable
   static bool state;
@@ -336,7 +337,7 @@ void setup()
   analogReadResolution(ADC_BITS);
 
   // Scheduler
-  xTaskCreate(read_m10q, "", 2048, nullptr, 2, nullptr);
+  xTaskCreate(read_gnss, "", 2048, nullptr, 2, nullptr);
   xTaskCreate(read_bme, "", 2048, nullptr, 2, nullptr);
   xTaskCreate(read_icm, "", 2048, nullptr, 2, nullptr);
   xTaskCreate(synchronize_kf, "", 1024, nullptr, 2, nullptr);
@@ -378,7 +379,7 @@ void pyro(void *)
       {
         sd_a([]
              {
-          servo.write(180);
+          servo.write(0);
           data.pyro_a = nova::pyro_state_t::FIRED;
           flag_a = false; });
       }
@@ -607,6 +608,7 @@ void send_data(void *)
   {
     if (xSemaphoreTake(spiMutex, portMAX_DELAY) == pdTRUE)
     {
+
       lora.transmit(constructed_data.c_str());
       xSemaphoreGive(spiMutex);
     }
@@ -646,26 +648,27 @@ void accept_command(void *)
   for (;;)
   {
     if (rx_flag)
-    {                  // only run when TRUE
-      rx_flag = false; // clear first (avoid missing quick second packet)
-
+    { // only run when TRUE
       if (xSemaphoreTake(spiMutex, portMAX_DELAY) == pdTRUE)
       {
-        String rx_message;
-        rx_message.reserve(64);
-        int state = lora.readData(rx_message);
+        String rxmessage = "";
+        rxmessage.reserve(64);
+        int state = lora.readData(rxmessage);
         lora.startReceive(); // re-arm
         xSemaphoreGive(spiMutex);
 
         if (state == RADIOLIB_ERR_NONE)
         {
-          handle_command(rx_message);
+          handle_command(rxmessage);
         }
       }
+      rx_flag = false; // clear first (avoid missing quick second packet)
     }
     else
-    { DELAY(100); }  
-    
+    {
+      DELAY(100);
+    }
+
     // // Serial
     // if (Serial.available())
     // {
@@ -732,7 +735,7 @@ void handle_command(String rx_message)
   {
     if (data.ps != nova::state_t::IDLE_SAFE && data.ps != nova::state_t::RECOVERED_SAFE)
     {
-      servo.write(180);
+      servo.write(0);
       data.pyro_a = nova::pyro_state_t::FIRING;
     }
   }
@@ -969,7 +972,7 @@ void fsm_eval(void *)
 
       if (!fired)
       {
-        servo.write(180); // Deploy
+        servo.write(0); // Deploy
         data.pyro_a = nova::pyro_state_t::FIRING;
         fired = true;
       }
