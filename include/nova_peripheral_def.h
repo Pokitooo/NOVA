@@ -48,10 +48,10 @@ namespace nova::config {
         RANGE_20MV = 1
     };
 
-    constexpr uint32_t TIME_TO_APOGEE_MIN  = 23 * 1000ul;
-    constexpr uint32_t TIME_TO_APOGEE_MAX  = 27 * 1000ul;
-    constexpr uint32_t TIME_TO_BURNOUT_MIN = 4 * 1000ul;
-    constexpr uint32_t TIME_TO_BURNOUT_MAX = 6 * 1000ul;
+    constexpr uint32_t TIME_TO_APOGEE_MIN  = 13.5 * 1000ul;
+    constexpr uint32_t TIME_TO_APOGEE_MAX  = 14.5 * 1000ul; //Sim 14.53
+    constexpr uint32_t TIME_TO_BURNOUT_MIN = 1.35 * 1000ul;
+    constexpr uint32_t TIME_TO_BURNOUT_MAX = 2.35 * 1000ul; //Sim 1.85
 
     namespace alg {
         constexpr uint32_t LAUNCH_TON          = 150ul;          // 150 ms
@@ -59,10 +59,9 @@ namespace nova::config {
         constexpr uint32_t APOGEE_SLOW_TON     = 1000ul;         // 2000 ms
         constexpr uint32_t MAIN_DEPLOYMENT_TON = 200ul;          // 200 ms
         constexpr uint32_t LANDING_TON         = 5000ul;         // 200 ms
-        constexpr double ACC_OFFSET            = 9.148845403;
-        constexpr double LAUNCH_ACC            = 20.0; //62.7 + nova::config::alg::ACC_OFFSET;           // 40 m/s^2
+        constexpr double LAUNCH_ACC            = 20.0; //55;           // 62.7 m/s^2
         constexpr double APOGEE_VEL            = 10.0;           // m/s
-        constexpr double MAIN_ALTITUDE         = 450.f + 100.f;  // m
+        constexpr double MAIN_ALTITUDE         = 100.f;  // m
     }  // namespace alg
 
     constexpr unsigned long RFD900X_BAUD         = 460800;

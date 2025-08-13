@@ -18,12 +18,14 @@ constexpr struct
   uint16_t preamble_length = 16;
 } params;
 
-volatile bool txFlag = false; // TX trigger flag
+volatile bool receivedFlag = false;
 
-void onTxDone()
+void setFlag()
 {
-  txFlag = true;
+  receivedFlag = true;
 }
+
+String rx_buf;
 
 void setup()
 {
@@ -54,7 +56,7 @@ void setup()
   lora.explicitHeader();
   lora.setCRC(true);
   lora.autoLDRO();
-  lora.setDio1Action(onTxDone);
+  lora.setPacketReceivedAction(setFlag);
 
   Serial.print(F("[SX1262] Starting to listen ... "));
   rc = lora.startReceive();
@@ -67,87 +69,58 @@ void setup()
     Serial.print(F("failed, code "));
     Serial.println(rc);
     while (true)
-    {
-      delay(10);
-    }
+      ;
   }
+  rx_buf.reserve(300);
 }
-
-static void handleDownlink()
-{
-  int packetSize = lora.getPacketLength();
-  if (packetSize <= 0)
-    return;
-
-  String str;
-  int16_t rc = lora.readData(str);
-  Serial.println(packetSize);
-  
-  if (rc == RADIOLIB_ERR_NONE)
-  {
-    Serial.println(F("[SX1262] Received packet!"));
-    Serial.print(F("[SX1262] Data:\t\t"));
-    Serial.println(str);
-
-    Serial.print(F("[SX1262] RSSI:\t\t"));
-    Serial.print(lora.getRSSI());
-    Serial.println(F(" dBm"));
-
-    Serial.print(F("[SX1262] SNR:\t\t"));
-    Serial.print(lora.getSNR());
-    Serial.println(F(" dB"));
-
-    Serial.print(F("[SX1262] Frequency error:\t"));
-    Serial.print(lora.getFrequencyError());
-    Serial.println(F(" Hz"));
-
-    // Example: set txFlag based on command
-    if (str == "cmd tx")
-    {
-      txFlag = true;
-      Serial.println(F("[SX1262] TX flag set!"));
-    }
-  }
-  else if (rc == RADIOLIB_ERR_CRC_MISMATCH)
-  {
-    Serial.println(F("CRC error!"));
-  }
-  else
-  {
-    Serial.print(F("readData failed, code "));
-    Serial.println(rc);
-  }
-}
-
-static void uplinkCommand() {
-  if (!Serial.available()) return;
-
-  String line = Serial.readStringUntil('\n');
-  line.trim();
-  if (line.length() == 0) return;
-
-  if (!line.startsWith("cmd ")) {
-    Serial.println(F("Ignored: Not a valid command"));
-    return;
-  }
-
-  // Use blocking TX to keep state clean
-  int16_t rc = lora.transmit(line);
-  if (rc == RADIOLIB_ERR_NONE) {
-    Serial.println(F("Transmission successful!"));
-  } else {
-    Serial.print(F("TX failed, code ")); Serial.println(rc);
-  }
-
-  // ALWAYS return to RX
-  lora.startReceive();
-}
-
 
 void loop()
 {
-  handleDownlink();
-  lora.startTransmit("Hello");
-  uplinkCommand();
-  delay(1000);
+  // check if the flag is set
+  if (receivedFlag)
+  {
+    receivedFlag = false;
+    rx_buf = "";
+    const int state = lora.readData(rx_buf);
+
+    if (state == RADIOLIB_ERR_NONE)
+    {
+      Serial.printf("SIZE=%d RSSI=%.2f SNR=%.2f DATA=",
+                    lora.getPacketLength(), lora.getRSSI(), lora.getSNR());
+      Serial.print(rx_buf);
+      Serial.print(F("\n[END OF PACKET]\n"));
+    }
+    else if (state == RADIOLIB_ERR_CRC_MISMATCH)
+    {
+      Serial.println(F("CRC error!"));
+    }
+    else
+    {
+      Serial.print(F("Failed, code "));
+      Serial.println(state);
+    }
+  }
+  else
+  {
+    if (!Serial.available())
+      return;
+
+    String line = Serial.readStringUntil('\n');
+    line.trim();
+    if (line.length() == 0)
+      return;
+
+    // Blocking TX to keep state clean
+    int16_t rc = lora.transmit(line);
+    if (rc == RADIOLIB_ERR_NONE) {
+      Serial.println(F("Transmission successful!"));
+    }
+    else {
+      Serial.print(F("TX failed, code "));
+      Serial.println(rc);
+    }
+
+    // ALWAYS return to RX after TX
+    lora.startReceive();
+  }
 }

@@ -1,10 +1,10 @@
 #include <Arduino.h>
-#include <lib_xcore>
+#include "Arduino_Extended.h"
+#include "lib_xcore"
 #include <STM32FreeRTOS.h>
 #include <STM32LowPower.h>
 #include "vt_linalg"
 #include "vt_kalman"
-#include "Arduino_Extended.h"
 #include "File_Utility.h"
 
 #include <Wire.h>
@@ -433,7 +433,7 @@ void buzzer_control(on_off_timer::interval_params *intervals_ms)
     // On-off timer
     static on_off_timer timer(intervals_ms->t_on, intervals_ms->t_off, millis);
     // digitalToggle(buzzerPin);
-    digitalToggle(ledPin);
+    // digitalToggle(ledPin);
     DELAY(500);
   }
 }
@@ -468,6 +468,7 @@ void read_gnss(void *)
 
     if (lc86.location.isUpdated())
     {
+      
       data.timestamp = lc86.time.value();
       data.gps_latitude = lc86.location.lat();
       data.gps_longitude = lc86.location.lng();
