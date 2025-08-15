@@ -59,7 +59,6 @@ FsUtil<sd_t, file_t> sd_util;
 // LoRa
 volatile bool tx_flag = false;
 volatile bool rx_flag = false;
-String s;
 
 SPISettings lora_spi_settings(4'000'000, MSBFIRST, SPI_MODE0);
 
@@ -221,8 +220,6 @@ extern void transmit_data(time_type *interval_ms);
 
 extern void save_data(time_type *interval_ms);
 
-extern void accept_command();
-
 extern void print_data();
 
 extern void fsm_eval();
@@ -232,7 +229,7 @@ extern void set_rxflag();
 template <typename SdType, typename FileType>
 extern void init_storage(FsUtil<SdType, FileType> &sd_util_instance);
 
-extern void handle_command(String rx_message);
+extern void handle_command();
 
 void setup()
 {
@@ -246,7 +243,7 @@ void setup()
 
     // GPIO
     pinMode(to_digital(buzzerPin), OUTPUT); // BUZZER
-    // digitalWrite(buzzerPin, 1);
+    digitalWrite(buzzerPin, 1);
     delay(100);
     digitalWrite(buzzerPin, 0);
 
@@ -289,8 +286,8 @@ void setup()
     state = state || lora.explicitHeader();
     state = state || lora.setCRC(true);
     state = state || lora.autoLDRO();
+
     lora.setPacketReceivedAction(set_rxflag);
-    lora.startReceive();
 
     if (lora_state == RADIOLIB_ERR_NONE)
     {
@@ -303,8 +300,6 @@ void setup()
         while (true)
             ;
     }
-
-    s.reserve(256);
 
     // icm42688
     pvalid.icm = icm.begin();
@@ -389,10 +384,10 @@ void setup()
 
                << task_type(read_gnss, 100ul, millis, 2)
 
-               << task_type(print_data, 1000ul, millis, 252)
-               << task_type(accept_command, 100ul, millis, 253)
+               << task_type(handle_command, 100ul, millis, 252)
+               << task_type(print_data, 1000ul, millis, 253)
                << task_type(construct_data, 25ul, millis, 254)
-               << (task_type(save_data, &log_interval, 255), pvalid.sd) 
+               << (task_type(save_data, &log_interval, 255), pvalid.sd)
                << task_type(transmit_data, &tx_interval, 255);
 
     // Low power mode
@@ -542,9 +537,11 @@ void transmit_data(time_type *interval_ms)
 
     sd([&]
        {
+
     lora.transmit(constructed_data.c_str());
+    lora.finishTransmit();
     ++data.counter; 
-    Serial.println("Transmitted");});
+    Serial.println("Transmitted"); });
 }
 
 template <typename SdType, typename FileType>
@@ -568,49 +565,30 @@ void save_data(time_type *interval_ms)
 
     sd([&]() -> void
        { sd_util.file() << constructed_data; 
-         Serial.println("Data written and flushed.");});
+         Serial.println("Data written and flushed."); });
 
     sd_save([&]() -> void
             { sd_util.flush_one(); });
 }
 
-void accept_command()
+void handle_command()
 {
-
-    if (rx_flag)
+    lora.startReceive();
+    if (lora.getPacketLength() == 0)
     {
-        rx_flag = false;
-        String rxmessage = "";
-        rxmessage.reserve(64);
-        int state = lora.readData(rxmessage);
-        lora.startReceive();
-
-        if (state == RADIOLIB_ERR_NONE)
-        {
-            handle_command(rxmessage);
-        }
+        return;
     }
 
-    // Serial
-    if (Serial.available())
-    {
-        String serial_input = Serial.readStringUntil('\n'); // Read serial input line
-        if (serial_input.length() > 0)
-        {
-            handle_command(serial_input); // Handle command from Serial input
-            digitalToggle(ledPin);
-        }
-    }
-}
+    String rx_message;
+    rx_message.reserve(64);
 
-void handle_command(String rx_message)
-{
-    Serial.print("RX: ");
-    Serial.println(rx_message);
+    
+    lora.readData(rx_message);
 
     if (rx_message.substring(0, 4) != "cmd ")
     {
         // Return if cmd header is invalid
+        Serial.println(rx_message);
         ++data.last_nack;
         return;
     }
@@ -718,6 +696,7 @@ void handle_command(String rx_message)
     }
     else
     {
+        Serial.println(command);
         // <--- Unknown command: send back nack --->
         ++data.last_nack;
         --data.last_ack;
