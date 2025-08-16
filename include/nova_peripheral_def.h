@@ -48,8 +48,8 @@ namespace nova::config {
         RANGE_20MV = 1
     };
 
-    constexpr uint32_t TIME_TO_APOGEE_MIN  = 13.5 * 1000ul;
-    constexpr uint32_t TIME_TO_APOGEE_MAX  = 14.5 * 1000ul; //Sim 14.53
+    constexpr uint32_t TIME_TO_APOGEE_MIN  = 13.53 * 1000ul;
+    constexpr uint32_t TIME_TO_APOGEE_MAX  = 14.53 * 1000ul; //Sim 14.53
     constexpr uint32_t TIME_TO_BURNOUT_MIN = 1.35 * 1000ul;
     constexpr uint32_t TIME_TO_BURNOUT_MAX = 2.35 * 1000ul; //Sim 1.85
 

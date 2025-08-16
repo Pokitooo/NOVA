@@ -192,6 +192,7 @@ struct
 
 // Communication data
 String constructed_data;
+String tx_data;
 time_type tx_interval = nova::config::TX_IDLE_INTERVAL;
 time_type log_interval = nova::config::LOG_IDLE_INTERVAL;
 
@@ -216,12 +217,12 @@ extern void read_current();
 
 extern void construct_data();
 
-extern void transmit_data(time_type *interval_ms);
+extern void transmit_data();
 
 extern void save_data(time_type *interval_ms);
 
 extern void print_data();
-
+  
 extern void fsm_eval();
 
 extern void set_rxflag();
@@ -257,7 +258,7 @@ void setup()
 
     // Servo
     servo.attach(servoPin); // Servo
-    servo.write(180);
+    servo.write(0);
 
     // variable
     static bool state;
@@ -267,11 +268,7 @@ void setup()
     if (pvalid.sd)
     {
         init_storage(sd_util);
-    }
-    // Serial.printf("SD CARD: %s\n", sdstate ? "SUCCESS" : "FAILED");
-    // if (!sdstate)
-    //     while (true)
-    //         ;
+    }   
 
     // LoRa
     uint16_t lora_state = lora.begin(params.center_freq,
@@ -303,12 +300,6 @@ void setup()
 
     // icm42688
     pvalid.icm = icm.begin();
-    // if (status > 0)
-    // {
-    //     Serial.println("ICM Success");
-    // }
-    // Serial.print("ICM Status: ");
-    // Serial.println(status);
 
     // lc86g UARTS
     gnssSerial.begin(115200);
@@ -348,7 +339,7 @@ void setup()
             {
                 sd_a([]
                      {
-                    servo.write(0);
+                    servo.write(180);
                     data.pyro_a = nova::pyro_state_t::FIRED;
                     flag_a = false; });
             }
@@ -388,7 +379,7 @@ void setup()
                << task_type(print_data, 1000ul, millis, 253)
                << task_type(construct_data, 25ul, millis, 254)
                << (task_type(save_data, &log_interval, 255), pvalid.sd)
-               << task_type(transmit_data, &tx_interval, 255);
+               << task_type(transmit_data, 2000ul, millis, 255);
 
     // Low power mode
     LowPower.begin();
@@ -502,7 +493,6 @@ void construct_data()
 {
     constructed_data = "";
     csv_stream_crlf(constructed_data)
-        << "<1>"
         << data.counter
         << data.timestamp
 
@@ -522,26 +512,26 @@ void construct_data()
 
         << data.last_ack
         << data.last_nack;
+
+    tx_data = "";
+    csv_stream_crlf(tx_data)
+        << data.counter
+        
+        << nova::state_string(data.ps)
+        << String(data.gps_latitude, 6)
+        << String(data.gps_longitude, 6)
+        << String(data.altitude, 4)
+
+        << data.last_ack
+        << data.last_nack;
 }
 
-void transmit_data(time_type *interval_ms)
+void transmit_data()
 {
-    static time_type prev = *interval_ms;
-    static smart_delay sd(*interval_ms, millis);
-
-    if (prev != *interval_ms)
-    {
-        sd.set_interval(*interval_ms);
-        prev = *interval_ms;
-    }
-
-    sd([&]
-       {
-
-    lora.transmit(constructed_data.c_str());
+    lora.transmit(tx_data.c_str());
     lora.finishTransmit();
     ++data.counter; 
-    Serial.println("Transmitted"); });
+    Serial.println("Transmitted"); 
 }
 
 template <typename SdType, typename FileType>
@@ -634,7 +624,7 @@ void handle_command()
     {
         if (data.ps != nova::state_t::IDLE_SAFE && data.ps != nova::state_t::RECOVERED_SAFE)
         {
-            servo.write(0);
+            servo.write(180);
             data.pyro_a = nova::pyro_state_t::FIRING;
         }
     }
@@ -871,7 +861,7 @@ void fsm_eval()
 
         if (!fired)
         {
-            servo.write(0); // Deploy
+            servo.write(180); // Deploy
             data.pyro_a = nova::pyro_state_t::FIRING;
             fired = true;
         }
