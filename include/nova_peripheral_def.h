@@ -31,7 +31,7 @@ union vec3_u
 };
 
 namespace nova::config {
-    constexpr uint32_t PYRO_ACTIVATE_INTERVAL = 5000ul;
+    constexpr uint32_t PYRO_ACTIVATE_INTERVAL = 1000ul;
 
     constexpr auto HZ_TO_INTERVAL_MS          = [](const double FREQUENCY_HZ) -> uint32_t {
         return static_cast<uint32_t>(1000. / FREQUENCY_HZ);
@@ -48,10 +48,10 @@ namespace nova::config {
         RANGE_20MV = 1
     };
 
-    constexpr uint32_t TIME_TO_APOGEE_MIN  = 13.53 * 1000ul;
-    constexpr uint32_t TIME_TO_APOGEE_MAX  = 14.53 * 1000ul; //Sim 14.53
-    constexpr uint32_t TIME_TO_BURNOUT_MIN = 1.35 * 1000ul;
-    constexpr uint32_t TIME_TO_BURNOUT_MAX = 2.35 * 1000ul; //Sim 1.85
+    constexpr uint32_t TIME_TO_APOGEE_MIN  = 14.69 * 1000ul;
+    constexpr uint32_t TIME_TO_APOGEE_MAX  = 15.69 * 1000ul; //Sim 14.69
+    constexpr uint32_t TIME_TO_BURNOUT_MIN = 1.85 * 1000ul;
+    constexpr uint32_t TIME_TO_BURNOUT_MAX = 2.85 * 1000ul; //Sim 1.85
 
     namespace alg {
         constexpr uint32_t LAUNCH_TON          = 150ul;          // 150 ms
@@ -59,9 +59,9 @@ namespace nova::config {
         constexpr uint32_t APOGEE_SLOW_TON     = 1000ul;         // 2000 ms
         constexpr uint32_t MAIN_DEPLOYMENT_TON = 200ul;          // 200 ms
         constexpr uint32_t LANDING_TON         = 5000ul;         // 200 ms
-        constexpr double LAUNCH_ACC            = 20.0; //55;           // 62.7 m/s^2
-        constexpr double APOGEE_VEL            = 10.0;           // m/s
-        constexpr double MAIN_ALTITUDE         = 100.f;  // m
+        constexpr double LAUNCH_ACC            = 30.0;       // 62.7 m/s^2
+        constexpr double APOGEE_VEL            = 5.0;           // m/s
+        constexpr double MAIN_ALTITUDE         = 150.f;  // m
     }  // namespace alg
 
     constexpr unsigned long RFD900X_BAUD         = 460800;
@@ -88,6 +88,11 @@ namespace nova::config {
     constexpr uint32_t BUZZER_PAD_PREOP_INTERVAL = HZ_TO_INTERVAL_MS(10);   // 10 Hz
     constexpr uint32_t BUZZER_ASCEND_INTERVAL    = HZ_TO_INTERVAL_MS(0.2);  // 0.2 Hz
     constexpr uint32_t BUZZER_DESCEND_INTERVAL   = HZ_TO_INTERVAL_MS(1);    // 1 Hz
+
+    constexpr int SERVO_A_DEPLOY = 120;
+    constexpr int SERVO_A_LOCK = 180;
+    constexpr int SERVO_B_DEPLOY = 0;
+    constexpr int SERVO_B_LOCK = 180;
 
     constexpr auto BUZZER_OFF_INTERVAL           = [](const uint32_t BUZZER_TOTAL_INTERVAL) -> uint32_t {
         return BUZZER_TOTAL_INTERVAL - BUZZER_ON_INTERVAL;

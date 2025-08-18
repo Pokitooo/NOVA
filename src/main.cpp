@@ -57,8 +57,22 @@ using file_t = File32;
 FsUtil<sd_t, file_t> sd_util;
 
 // LoRa
+
+// LoRa State
+enum class LoRaState
+{
+    IDLE = 0,
+    TRANSMITTING,
+    RECEIVING
+};
+
+int status_lora;
 volatile bool tx_flag = false;
 volatile bool rx_flag = false;
+
+volatile LoRaState lora_state = LoRaState::IDLE;
+uint32_t lora_tx_end_time;
+float lora_rssi;
 
 SPISettings lora_spi_settings(4'000'000, MSBFIRST, SPI_MODE0);
 
@@ -66,11 +80,11 @@ constexpr struct
 {
     float center_freq = 920.800'000f; // MHz
     float bandwidth = 125.f;          // kHz
-    uint8_t spreading_factor = 7;     // SF: 6 to 12
+    uint8_t spreading_factor = 9;     // SF: 6 to 12
     uint8_t coding_rate = 8;          // CR: 5 to 8
     uint8_t sync_word = 0x12;         // Private SX1262
-    int8_t power = 10;                // up to 22 dBm for SX1262
-    uint16_t preamble_length = 16;
+    int8_t power = 22;                // up to 22 dBm for SX1262
+    uint16_t preamble_length = 15;
 } params;
 
 SX1262 lora = new Module(LORA_NSS, LORA_DIO1, LORA_NRST, LORA_BUSY, spi1, lora_spi_settings);
@@ -85,7 +99,29 @@ constexpr float VREF = 3300;
 float voltageServo, volatgeEXT = 0.F;
 
 // Servo
-Servo servo; // Create servo object
+struct SERVO
+{
+    uint32_t pin;
+    SERVO(uint32_t pin) : pin(pin)
+    {
+        pinMode(pin, OUTPUT);
+    }
+
+    void write(int angle)
+    {
+        const int cpw = map(angle, 0, 180, 500, 2500);
+        for (size_t i = 0; i < max(5, (angle + 17) / 18); ++i)
+        {
+            digitalWrite(pin, HIGH);
+            delayMicroseconds(cpw);
+            digitalWrite(pin, LOW);
+            delayMicroseconds(20000);
+        }
+    }
+};
+
+SERVO servo_a(servoPinA);
+SERVO servo_b(servoPinB);
 
 // DATA
 struct Data
@@ -188,6 +224,7 @@ bool launch_override = false;
 struct
 {
     float altitude_offset{};
+    float apogee;
 } ground_truth;
 
 // Communication data
@@ -217,12 +254,12 @@ extern void read_current();
 
 extern void construct_data();
 
-extern void transmit_data();
+extern void transmit_receive_data();
 
 extern void save_data(time_type *interval_ms);
 
 extern void print_data();
-  
+
 extern void fsm_eval();
 
 extern void set_rxflag();
@@ -230,7 +267,7 @@ extern void set_rxflag();
 template <typename SdType, typename FileType>
 extern void init_storage(FsUtil<SdType, FileType> &sd_util_instance);
 
-extern void handle_command();
+extern void handle_command(String rx_message);
 
 void setup()
 {
@@ -256,10 +293,6 @@ void setup()
     timer_buz.pause();
     pinMode(to_digital(ledPin), OUTPUT); // LED
 
-    // Servo
-    servo.attach(servoPin); // Servo
-    servo.write(0);
-
     // variable
     static bool state;
 
@@ -268,7 +301,7 @@ void setup()
     if (pvalid.sd)
     {
         init_storage(sd_util);
-    }   
+    }
 
     // LoRa
     uint16_t lora_state = lora.begin(params.center_freq,
@@ -300,6 +333,13 @@ void setup()
 
     // icm42688
     pvalid.icm = icm.begin();
+    if (pvalid.icm)
+    {
+        icm.setAccelFS(ICM42688::gpm16);
+        icm.setGyroFS(ICM42688::dps2000);
+        icm.setAccelODR(ICM42688::odr32k);
+        icm.setGyroODR(ICM42688::odr32k);
+    }
 
     // lc86g UARTS
     gnssSerial.begin(115200);
@@ -339,7 +379,6 @@ void setup()
             {
                 sd_a([]
                      {
-                    servo.write(180);
                     data.pyro_a = nova::pyro_state_t::FIRED;
                     flag_a = false; });
             }
@@ -356,7 +395,6 @@ void setup()
             {
                 sd_b([]
                      {
-                    gpio_write << io_function::pull_low(pyroB);
                     data.pyro_b = nova::pyro_state_t::FIRED;
                     flag_b = false; });
             }
@@ -375,21 +413,19 @@ void setup()
 
                << task_type(read_gnss, 100ul, millis, 2)
 
-               << task_type(handle_command, 100ul, millis, 252)
+               << task_type(transmit_receive_data, 10ul, millis, 252)
                << task_type(print_data, 1000ul, millis, 253)
                << task_type(construct_data, 25ul, millis, 254)
-               << (task_type(save_data, &log_interval, 255), pvalid.sd)
-               << task_type(transmit_data, 2000ul, millis, 255);
+               << (task_type(save_data, &log_interval, 255), pvalid.sd);
 
     // Low power mode
-    LowPower.begin();
+    // LowPower.begin();
     dispatcher.reset();
 }
 
 void loop()
 {
     dispatcher();
-    delay(1);
 }
 
 void buzzer_control(on_off_timer::interval_params *intervals_ms)
@@ -410,12 +446,11 @@ void read_gnss()
     while (gnssSerial.available())
     {
         lc86.encode(gnssSerial.read());
+        data.timestamp = lc86.time.value();
     }
 
     if (lc86.location.isUpdated())
     {
-
-        data.timestamp = lc86.time.value();
         data.gps_latitude = lc86.location.lat();
         data.gps_longitude = lc86.location.lng();
         data.gps_altitude = lc86.altitude.meters();
@@ -486,7 +521,7 @@ void synchronize_kf()
 
 void read_current()
 {
-    voltageServo = analogRead(digitalPinToAnalogInput(VOUT_Servo)) / ADC_DIVIDER * VREF;
+    // voltageServo = analogRead(digitalPinToAnalogInput(VOUT_Servo)) / ADC_DIVIDER * VREF;
 }
 
 void construct_data()
@@ -516,22 +551,14 @@ void construct_data()
     tx_data = "";
     csv_stream_crlf(tx_data)
         << data.counter
-        
+
         << nova::state_string(data.ps)
         << String(data.gps_latitude, 6)
         << String(data.gps_longitude, 6)
-        << String(data.altitude, 4)
+        << String(ground_truth.apogee, 4)
 
         << data.last_ack
         << data.last_nack;
-}
-
-void transmit_data()
-{
-    lora.transmit(tx_data.c_str());
-    lora.finishTransmit();
-    ++data.counter; 
-    Serial.println("Transmitted"); 
 }
 
 template <typename SdType, typename FileType>
@@ -554,30 +581,77 @@ void save_data(time_type *interval_ms)
     }
 
     sd([&]() -> void
-       { sd_util.file() << constructed_data; 
-         Serial.println("Data written and flushed."); });
+       {
+           sd_util.file() << constructed_data;
+           //  Serial.println("Data written and flushed.");
+       });
 
     sd_save([&]() -> void
             { sd_util.flush_one(); });
 }
 
-void handle_command()
+void transmit_receive_data()
 {
-    lora.startReceive();
-    if (lora.getPacketLength() == 0)
+    static smart_delay nb_trx(4000ul, millis);
+
+    // Tx Loop
+    nb_trx([&]() -> void
+           {
+    lora_state = LoRaState::TRANSMITTING;
+    lora.startTransmit(tx_data);
+    lora_tx_end_time = millis() + 10 + (lora.getTimeOnAir(tx_data.length())) / 1000;
+    Serial.println("[TRANSMITTING...]"); 
+    ++data.counter; });
+
+    // Set Tx Done
+    if (millis() > lora_tx_end_time &&
+        lora_state != LoRaState::RECEIVING)
     {
-        return;
+        tx_flag = true;
+        lora_state = LoRaState::RECEIVING;
+        lora.startReceive();
+        Serial.println("[RECEIVING...]");
     }
 
-    String rx_message;
-    rx_message.reserve(64);
+    // Set Rx Done
+    if (lora.getPacketLength() > 0 &&
+        lora.getRSSI() != lora_rssi)
+    {
+        rx_flag = true;
+    }
 
-    
-    lora.readData(rx_message);
+    // On Transmit
+    if (tx_flag)
+    {
+        Serial.print("[TRANSMITTED] ");
+        Serial.println(tx_data);
+        tx_flag = false;
+    }
 
+    // On Receive
+    if (rx_flag)
+    {
+        String rx_string;
+        lora.readData(rx_string);
+        lora_rssi = lora.getRSSI();
+        Serial.print("[RECEIVED]    ");
+        Serial.println(rx_string);
+        rx_flag = false;
+
+        handle_command(rx_string);
+
+        lora_state = LoRaState::RECEIVING;
+        lora.startReceive();
+        Serial.println("[RECEIVING...]");
+    }
+}
+
+void handle_command(String rx_message)
+{
     if (rx_message.substring(0, 4) != "cmd ")
     {
         // Return if cmd header is invalid
+        Serial.print("Receive: ");
         Serial.println(rx_message);
         ++data.last_nack;
         return;
@@ -620,19 +694,33 @@ void handle_command()
             log_interval = nova::config::LOG_PAD_PREOP_INTERVAL;
         }
     }
-    else if (command == "manual-trigger-a")
+    else if (command == "servo-a-lock")
     {
         if (data.ps != nova::state_t::IDLE_SAFE && data.ps != nova::state_t::RECOVERED_SAFE)
         {
-            servo.write(180);
+            servo_a.write(nova::config::SERVO_A_LOCK);
+        }
+    }
+    else if (command == "servo-a-deploy")
+    {
+        if (data.ps != nova::state_t::IDLE_SAFE && data.ps != nova::state_t::RECOVERED_SAFE)
+        {
+            servo_a.write(nova::config::SERVO_A_DEPLOY);
             data.pyro_a = nova::pyro_state_t::FIRING;
         }
     }
-    else if (command == "manual-trigger-b")
+    else if (command == "servo-b-lock")
     {
         if (data.ps != nova::state_t::IDLE_SAFE && data.ps != nova::state_t::RECOVERED_SAFE)
         {
-            gpio_write << io_function::pull_high(pyroB);
+            servo_b.write(nova::config::SERVO_B_LOCK);
+        }
+    }
+    else if (command == "servo-b-deploy")
+    {
+        if (data.ps != nova::state_t::IDLE_SAFE && data.ps != nova::state_t::RECOVERED_SAFE)
+        {
+            servo_b.write(nova::config::SERVO_B_DEPLOY);
             data.pyro_b = nova::pyro_state_t::FIRING;
         }
     }
@@ -658,20 +746,20 @@ void handle_command()
     else if (command == "sleep")
     {
         // <--- Put the device into deep sleep mode (power saving) --->
-        PINS_OFF;
-        LowPower.deepSleep();
+        // PINS_OFF();
+        // LowPower.deepSleep();
     }
     else if (command == "shutdown")
     {
         // <--- Shutdown the device --->
-        PINS_OFF;
+        PINS_OFF();
 
         if (sdstate)
         {
             sd_util.close_one();
         }
 
-        LowPower.deepSleep();
+        // LowPower.deepSleep();
 
         __NVIC_SystemReset();
     }
@@ -861,7 +949,7 @@ void fsm_eval()
 
         if (!fired)
         {
-            servo.write(180); // Deploy
+            servo_a.write(nova::config::SERVO_A_DEPLOY); // Deploy
             data.pyro_a = nova::pyro_state_t::FIRING;
             fired = true;
         }
@@ -920,7 +1008,7 @@ void fsm_eval()
 
         if (!fired)
         {
-            gpio_write << io_function::pull_high(pyroB); // Change to solenoid
+            servo_b.write(nova::config::SERVO_B_DEPLOY);
             data.pyro_b = nova::pyro_state_t::FIRING;
             fired = true;
         }
@@ -988,6 +1076,11 @@ void fsm_eval()
     }
     default:
         __builtin_unreachable();
+    }
+
+    if (alt_x > ground_truth.apogee)
+    {
+        ground_truth.apogee = alt_x;
     }
 }
 
