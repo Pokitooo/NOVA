@@ -1,5 +1,6 @@
 #include <Arduino_Extended.h>
 #include <SPI.h>
+#include <EEPROM.h>
 #include <RadioLib.h>
 #include <lib_xcore>
 
@@ -14,13 +15,13 @@ enum class LoRaState
 // LoRa Parameters
 constexpr struct
 {
-    float center_freq = 920.400'000f; // MHz
-    float bandwidth = 125.f;          // kHz
-    uint8_t spreading_factor = 9;     // SF: 6 to 12
-    uint8_t coding_rate = 8;          // CR: 5 to 8
-    uint8_t sync_word = 0x12;         // Private SX1262
-    int8_t power = 22;                // up to 22 dBm for SX1262
-    uint16_t preamble_length = 16;
+  float center_freq = 920.400'000f; // MHz
+  float bandwidth = 125.f;          // kHz
+  uint8_t spreading_factor = 9;     // SF: 6 to 12
+  uint8_t coding_rate = 8;          // CR: 5 to 8
+  uint8_t sync_word = 0x12;         // Private SX1262
+  int8_t power = 22;                // up to 22 dBm for SX1262
+  uint16_t preamble_length = 16;
 } lora_params;
 
 // LoRa Pins
@@ -52,10 +53,6 @@ void setup()
 {
   Serial.begin();
   delay(1000);
-  Serial.println("Hello!");
-
-  Serial.println(PB0);
-  Serial.println(digitalPinToInterrupt(PB0));
 
   // LoRa
   int16_t lora_state = lora.begin(lora_params.center_freq,
@@ -75,6 +72,13 @@ void setup()
   Serial.printf("SX1262 LoRa %s\n", status_lora == RADIOLIB_ERR_NONE ? "SUCCESS" : "FAILED");
   if (status_lora != RADIOLIB_ERR_NONE)
     Serial.printf("Initialization failed! Error: %d\n", lora_state);
+
+  float freq;
+  EEPROM.get<float>(0, freq);
+  lora.setFrequency(freq);
+  Serial.print("Set frequency to ");
+  Serial.print(freq);
+  Serial.println("MHz");
 }
 
 void loop()
@@ -85,10 +89,25 @@ void loop()
     tx_data = "";
     while (Serial.available())
       tx_data += static_cast<char>(Serial.read());
-    lora_state = LoRaState::TRANSMITTING;
-    lora.startTransmit(tx_data);
-    lora_tx_end_time = millis() + 10 + (lora.getTimeOnAir(tx_data.length())) / 1000;
-    Serial.println("[TRANSMITTING...]");
+
+    if (tx_data.substring(0, 5) == "freq ")
+    {
+      String freqStr = tx_data.substring(5);
+      freqStr.trim();
+      const float freq = freqStr.toFloat();
+      lora.setFrequency(freq);
+      EEPROM.put<float>(0, freq);
+      Serial.print("Set frequency to ");
+      Serial.print(freq);
+      Serial.println("MHz");
+    }
+    else
+    {
+      lora_state = LoRaState::TRANSMITTING;
+      lora.startTransmit(tx_data);
+      lora_tx_end_time = millis() + 10 + (lora.getTimeOnAir(tx_data.length())) / 1000;
+      Serial.println("[TRANSMITTING...]");
+    }
   }
 
   // Set Tx Done

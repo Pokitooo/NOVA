@@ -91,6 +91,7 @@ namespace nova::config {
 
     constexpr int SERVO_A_DEPLOY = 115;
     constexpr int SERVO_A_LOCK = 180;
+    
     constexpr int SERVO_B_DEPLOY = 30;
     constexpr int SERVO_B_LOCK = 90;
 
