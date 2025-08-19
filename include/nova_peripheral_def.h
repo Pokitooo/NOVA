@@ -89,9 +89,9 @@ namespace nova::config {
     constexpr uint32_t BUZZER_ASCEND_INTERVAL    = HZ_TO_INTERVAL_MS(0.2);  // 0.2 Hz
     constexpr uint32_t BUZZER_DESCEND_INTERVAL   = HZ_TO_INTERVAL_MS(1);    // 1 Hz
 
-    constexpr int SERVO_A_DEPLOY = 115;
+    constexpr int SERVO_A_DEPLOY = 110;
     constexpr int SERVO_A_LOCK = 180;
-    
+
     constexpr int SERVO_B_DEPLOY = 30;
     constexpr int SERVO_B_LOCK = 90;
 

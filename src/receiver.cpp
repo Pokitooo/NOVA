@@ -15,7 +15,7 @@ enum class LoRaState
 // LoRa Parameters
 constexpr struct
 {
-  float center_freq = 920.400'000f; // MHz
+  float center_freq = 920.600'000f; // MHz
   float bandwidth = 125.f;          // kHz
   uint8_t spreading_factor = 9;     // SF: 6 to 12
   uint8_t coding_rate = 8;          // CR: 5 to 8
