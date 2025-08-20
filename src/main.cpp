@@ -408,7 +408,7 @@ void setup()
                << task_type(fsm_eval, 25ul, millis, 0)
 
                << (task_type(read_icm, 25ul, millis, 1), pvalid.icm)
-               << (task_type(read_bme, &bme_ref, 100ul, millis, 1), pvalid.bme)
+               << (task_type(read_bme, &bme_ref, 50ul, millis, 1), pvalid.bme)
                << task_type(synchronize_kf, 25ul, millis, 1)
 
                << task_type(read_gnss, 100ul, millis, 2)
@@ -551,7 +551,7 @@ void construct_data()
 
     tx_data = "";
     csv_stream_crlf(tx_data)
-        << "<3>"
+        << "<3>" // DEVICE NO
         << params.center_freq
         << data.counter
 
