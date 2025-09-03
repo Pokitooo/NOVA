@@ -9,7 +9,6 @@
 #include <Wire.h>
 #include <SPI.h>
 
-#include <SparkFun_u-blox_GNSS_v3.h>
 #include <TinyGPS++.h>
 #include <ICM42688.h>
 #include <Adafruit_BME280.h>
@@ -41,7 +40,6 @@ bool enable_buzzer = true;
 // i2c
 TwoWire i2c3(PIN_SDA, PIN_SCL);
 Adafruit_BME280 bme1;
-SFE_UBLOX_GNSS m10q;
 
 // UARTS
 HardwareSerial gnssSerial(PIN_RX, PIN_TX);
@@ -78,7 +76,7 @@ SPISettings lora_spi_settings(4'000'000, MSBFIRST, SPI_MODE0);
 
 constexpr struct
 {
-    float center_freq = 920.600'000f; // MHz
+    float center_freq = 920.200'000f; // MHz
     float bandwidth = 125.f;          // kHz
     uint8_t spreading_factor = 9;     // SF: 6 to 12
     uint8_t coding_rate = 8;          // CR: 5 to 8
@@ -93,10 +91,11 @@ SX1262 lora = new Module(LORA_NSS, LORA_DIO1, LORA_NRST, LORA_BUSY, spi1, lora_s
 ICM42688 icm(spi1, PIN_NSS_ICM);
 
 // ADC
-constexpr size_t ADC_BITS(12);
+constexpr size_t ADC_BITS(10);
 constexpr float ADC_DIVIDER = ((1 << ADC_BITS) - 1);
-constexpr float VREF = 3300;
-float voltageServo, volatgeEXT = 0.F;
+constexpr float VREF = 3300.f;  // V
+constexpr float VREF_VMON = 1938.46153846f;  // V
+constexpr float R_SHUNT = 2.e-3f;  // Ohm
 
 // Servo
 struct SERVO
@@ -150,6 +149,10 @@ struct Data
         vec3_u<double> acc;
         vec3_u<double> gyro;
     } imu;
+
+    float currentServo;
+    float currentEXT;
+    float voltageMon;
 
     uint8_t last_ack{};
     uint8_t last_nack{};
@@ -238,7 +241,7 @@ HardwareTimer timer_buz(TIM3);
 // variables
 volatile bool wake_flag = false;
 
-extern void buzzer_control(on_off_timer::interval_params *intervals_ms);
+extern void buzzer_control();
 
 extern void read_m10q();
 
@@ -280,11 +283,6 @@ void setup()
     spi1.begin();
 
     // GPIO
-    pinMode(to_digital(buzzerPin), OUTPUT); // BUZZER
-    digitalWrite(buzzerPin, 1);
-    delay(100);
-    digitalWrite(buzzerPin, 0);
-
     timer_buz.setOverflow(nova::config::BUZZER_ON_INTERVAL * 1000, MICROSEC_FORMAT);
     timer_buz.attachInterrupt([]
                               {
@@ -292,6 +290,8 @@ void setup()
         timer_buz.pause(); });
     timer_buz.pause();
     pinMode(to_digital(ledPin), OUTPUT); // LED
+
+    dout_low << buzzerPin;
 
     // variable
     static bool state;
@@ -362,6 +362,10 @@ void setup()
     // ADC
     analogReadResolution(ADC_BITS);
 
+    pinMode(VOUT_Servo, INPUT);
+    pinMode(VOUT_EXT, INPUT);
+    pinMode(VMON, INPUT);
+
     auto pyro_cutoff = []
     {
         static smart_delay sd_a(nova::config::PYRO_ACTIVATE_INTERVAL, millis);
@@ -402,7 +406,7 @@ void setup()
     };
 
     // Tasks
-    dispatcher << task_type(buzzer_control, &buzzer_intervals, 0) // Adaptive
+    dispatcher << task_type(buzzer_control, 1000ul, 0) // Adaptive
                << task_type(pyro_cutoff, 0)
 
                << task_type(fsm_eval, 25ul, millis, 0)
@@ -412,6 +416,7 @@ void setup()
                << task_type(synchronize_kf, 25ul, millis, 1)
 
                << task_type(read_gnss, 100ul, millis, 2)
+               << task_type(read_current, 500ul, millis, 3)
 
                << task_type(transmit_receive_data, 10ul, millis, 252)
                << task_type(print_data, 1000ul, millis, 253)
@@ -428,16 +433,11 @@ void loop()
     dispatcher();
 }
 
-void buzzer_control(on_off_timer::interval_params *intervals_ms)
+void buzzer_control()
 {
-    static time_type prev_on = intervals_ms->t_on;
-    static time_type prev_off = intervals_ms->t_off;
-    static nova::state_t prev_state = nova::state_t::STARTUP;
-
     // On-off timer
-    static on_off_timer timer(intervals_ms->t_on, intervals_ms->t_off, millis);
     // digitalToggle(buzzerPin);
-    // digitalToggle(ledPin);
+    digitalToggle(ledPin);
 }
 
 void read_gnss()
@@ -521,7 +521,12 @@ void synchronize_kf()
 
 void read_current()
 {
-    // voltageServo = analogRead(digitalPinToAnalogInput(VOUT_Servo)) / ADC_DIVIDER * VREF;
+    float dvServo = analogRead(digitalPinToAnalogInput(VOUT_Servo)) / ADC_DIVIDER * VREF;
+    data.currentServo = dvServo / R_SHUNT;
+    float dvEXT = analogRead(digitalPinToAnalogInput(VOUT_Servo)) / ADC_DIVIDER * VREF;
+    data.currentEXT = dvEXT / R_SHUNT;
+
+    data.voltageMon = analogRead(digitalPinToAnalogInput(VOUT_EXT)) / ADC_DIVIDER * VREF_VMON;
 }
 
 void construct_data()
@@ -546,6 +551,10 @@ void construct_data()
         << data.imu.acc.x << data.imu.acc.y << data.imu.acc.z
         << data.imu.gyro.x << data.imu.gyro.y << data.imu.gyro.z
 
+        << data.currentEXT
+        << data.currentServo
+        << data.voltageMon
+
         << data.last_ack
         << data.last_nack;
 
@@ -558,7 +567,10 @@ void construct_data()
         << nova::state_string(data.ps)
         << String(data.gps_latitude, 6)
         << String(data.gps_longitude, 6)
-        << String(ground_truth.apogee, 4)
+        << String(data.altitude, 4)
+        << String(ground_truth.apogee, 4)           
+
+        << data.voltageMon
 
         << data.last_ack
         << data.last_nack;
@@ -697,6 +709,13 @@ void handle_command(String rx_message)
             log_interval = nova::config::LOG_PAD_PREOP_INTERVAL;
         }
     }
+    else if (command == "servo-a-set")
+    {
+        if (data.ps != nova::state_t::IDLE_SAFE && data.ps != nova::state_t::RECOVERED_SAFE)
+        {
+            servo_a.write(nova::config::SERVO_A_SET);
+        }
+    }
     else if (command == "servo-a-lock")
     {
         if (data.ps != nova::state_t::IDLE_SAFE && data.ps != nova::state_t::RECOVERED_SAFE)
@@ -710,6 +729,13 @@ void handle_command(String rx_message)
         {
             servo_a.write(nova::config::SERVO_A_DEPLOY);
             data.pyro_a = nova::pyro_state_t::FIRING;
+        }
+    }
+    else if (command == "servo-a-set")
+    {
+        if (data.ps != nova::state_t::IDLE_SAFE && data.ps != nova::state_t::RECOVERED_SAFE)
+        {
+            servo_b.write(nova::config::SERVO_B_SET);
         }
     }
     else if (command == "servo-b-lock")
@@ -1143,6 +1169,15 @@ void print_data()
     Serial.println(data.last_ack);
     Serial.print("Last NACK: ");
     Serial.println(data.last_nack);
+
+    Serial.print("currentServo = ");
+    Serial.println(data.currentServo, 2); // print with 2 decimal places
+
+    Serial.print("currentEXT = ");
+    Serial.println(data.currentEXT, 2);
+
+    Serial.print("voltageMon = ");
+    Serial.println(data.voltageMon, 2);
 
     Serial.println("==================\n");
 }

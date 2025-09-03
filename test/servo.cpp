@@ -15,7 +15,6 @@
 #include <Wire.h>
 #include <SPI.h>
 
-#include <SparkFun_u-blox_GNSS_v3.h>
 #include <TinyGPS++.h>
 #include <ICM42688.h>
 #include <Adafruit_BME280.h>

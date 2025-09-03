@@ -37,7 +37,8 @@ constexpr uint32_t servoPinB = PA2;
 
 // CURRENT ADC
 constexpr uint32_t VOUT_EXT = PB1;
-// constexpr uint32_t VOUT_Servo = PA3;
+constexpr uint32_t VOUT_Servo = PA3;
+constexpr uint32_t VMON = PB4;
 
 constexpr auto PINS_OFF = []
 {
