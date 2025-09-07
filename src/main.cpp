@@ -292,7 +292,10 @@ void setup()
     pinMode(to_digital(ledPin), OUTPUT); // LED
 
     dout_low << buzzerPin;
-
+    gpio_write << io_function::pull_high(buzzerPin);   
+    delay(100);
+    gpio_write << io_function::pull_low(buzzerPin);                            
+                         
     // variable
     static bool state;
 
@@ -301,6 +304,7 @@ void setup()
     if (pvalid.sd)
     {
         init_storage(sd_util);
+        Serial.println("SD SUCESS");
     }
 
     // LoRa
@@ -406,7 +410,7 @@ void setup()
     };
 
     // Tasks
-    dispatcher << task_type(buzzer_control, 1000ul, 0) // Adaptive
+    dispatcher << task_type(buzzer_control, 1000ul, millis, 0) // Adaptive
                << task_type(pyro_cutoff, 0)
 
                << task_type(fsm_eval, 25ul, millis, 0)
@@ -418,7 +422,7 @@ void setup()
                << task_type(read_gnss, 100ul, millis, 2)
                << task_type(read_current, 500ul, millis, 3)
 
-               << task_type(transmit_receive_data, 10ul, millis, 252)
+            //    << task_type(transmit_receive_data, 10ul, millis, 252)
                << task_type(print_data, 1000ul, millis, 253)
                << task_type(construct_data, 25ul, millis, 254)
                << (task_type(save_data, &log_interval, 255), pvalid.sd);

@@ -93,9 +93,9 @@ namespace nova::config {
     constexpr int SERVO_A_LOCK = 60;
     constexpr int SERVO_A_SET = 0;
 
-    constexpr int SERVO_B_DEPLOY = 0;
+    constexpr int SERVO_B_DEPLOY = 70;
     constexpr int SERVO_B_LOCK = 180;
-    constexpr int SERVO_B_SET = 90;
+    constexpr int SERVO_B_SET = 110;
 
     constexpr auto BUZZER_OFF_INTERVAL           = [](const uint32_t BUZZER_TOTAL_INTERVAL) -> uint32_t {
         return BUZZER_TOTAL_INTERVAL - BUZZER_ON_INTERVAL;
