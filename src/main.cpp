@@ -412,6 +412,7 @@ void setup()
                << task_type(pyro_cutoff, 0)
 
                << task_type(fsm_eval, 25ul, millis, 0)
+               << task_type(retain_deployment, 100ul, millis, 0)
 
                << (task_type(read_icm, 25ul, millis, 1), pvalid.icm)
                << (task_type(read_bme, &bme_ref, 50ul, millis, 1), pvalid.bme)
@@ -558,7 +559,8 @@ void retain_deployment()
             delay(20);
         }
     }
-    else if (angle == nova::config::SERVO_A_DEPLOY){
+    else if (angle == nova::config::SERVO_A_DEPLOY)
+    {
         servo_a.write(angle);
     }
     else
