@@ -55,6 +55,8 @@ FsUtil<sd_t, file_t> sd_util;
 // Servo myservo;  // create servo object to control a servo
 // twelve servo objects can be created on most boards
 
+int angle;
+
 struct SERVO
 {
     uint32_t pin;
@@ -66,7 +68,7 @@ struct SERVO
     void write(int angle)
     {
         const int cpw = map(angle, 0, 180, 500, 2500);
-        for (size_t i = 0; i < max(5, (angle + 17) / 18); ++i)
+        for (size_t i = 0; i < max(5, 20); ++i)
         {
             digitalWrite(pin, HIGH);
             delayMicroseconds(cpw);
@@ -80,6 +82,7 @@ SERVO servo_a(servoPinA);
 
 void setup()
 {
+    Serial.begin();
 }
 
 void loop()
@@ -98,6 +101,23 @@ void loop()
                 servo_a.write(newAngle);
                 Serial.print("Servo moved to: ");
                 Serial.println(newAngle);
+            }
+            else if (newAngle == 200)
+            {
+                servo_a.write(60);
+                for (;;)
+                {
+                    for (angle = 0; angle <= 180; angle += 10)
+                    {
+                        servo_a.write(angle);
+                        delay(20); // หน่วงเวลาเพื่อให้เซอร์โวหมุนตามทัน
+                    }
+                    for (angle > 180; angle -= 10;)
+                    {
+                        servo_a.write(angle);
+                        delay(20);
+                    }
+                }
             }
             else
             {

@@ -72,16 +72,16 @@ volatile LoRaState lora_state = LoRaState::IDLE;
 uint32_t lora_tx_end_time;
 float lora_rssi;
 
-SPISettings lora_spi_settings(4'000'000, MSBFIRST, SPI_MODE0);
+SPISettings lora_spi_settings(6'000'000, MSBFIRST, SPI_MODE0);
 
 constexpr struct
 {
-    float center_freq = 920.200'000f; // MHz
-    float bandwidth = 125.f;          // kHz
-    uint8_t spreading_factor = 9;     // SF: 6 to 12
-    uint8_t coding_rate = 8;          // CR: 5 to 8
-    uint8_t sync_word = 0x12;         // Private SX1262
-    int8_t power = 22;                // up to 22 dBm for SX1262
+    float center_freq = 921.50'000f; // MHz
+    float bandwidth = 125.f;         // kHz
+    uint8_t spreading_factor = 9;    // SF: 6 to 12
+    uint8_t coding_rate = 8;         // CR: 5 to 8
+    uint8_t sync_word = 0x12;        // Private SX1262
+    int8_t power = 22;               // up to 22 dBm for SX1262
     uint16_t preamble_length = 16;
 } params;
 
@@ -93,9 +93,9 @@ ICM42688 icm(spi1, PIN_NSS_ICM);
 // ADC
 constexpr size_t ADC_BITS(10);
 constexpr float ADC_DIVIDER = ((1 << ADC_BITS) - 1);
-constexpr float VREF = 3300.f;  // V
-constexpr float VREF_VMON = 1938.46153846f;  // V
-constexpr float R_SHUNT = 2.e-3f;  // Ohm
+constexpr float VREF = 3300.f;              // V
+constexpr float VREF_VMON = 1938.46153846f; // V
+constexpr float R_SHUNT = 2.e-3f;           // Ohm
 
 // Servo
 struct SERVO
@@ -109,7 +109,7 @@ struct SERVO
     void write(int angle)
     {
         const int cpw = map(angle, 0, 180, 500, 2500);
-        for (size_t i = 0; i < max(5, (angle + 17) / 18); ++i)
+        for (size_t i = 0; i < max(5, 20); ++i)
         {
             digitalWrite(pin, HIGH);
             delayMicroseconds(cpw);
@@ -121,6 +121,8 @@ struct SERVO
 
 SERVO servo_a(servoPinA);
 SERVO servo_b(servoPinB);
+int pos_a = nova::config::SERVO_A_LOCK;
+int pos_b = nova::config::SERVO_B_LOCK;
 
 // DATA
 struct Data
@@ -236,12 +238,12 @@ String tx_data;
 time_type tx_interval = nova::config::TX_IDLE_INTERVAL;
 time_type log_interval = nova::config::LOG_IDLE_INTERVAL;
 
-HardwareTimer timer_buz(TIM3);
+// HardwareTimer timer_buz(TIM3);
 
 // variables
 volatile bool wake_flag = false;
 
-extern void buzzer_control();
+extern void buzzer_control(on_off_timer::interval_params *intervals_ms);
 
 extern void read_m10q();
 
@@ -265,6 +267,8 @@ extern void print_data();
 
 extern void fsm_eval();
 
+extern void retain_deployment();
+
 extern void set_rxflag();
 
 template <typename SdType, typename FileType>
@@ -283,19 +287,13 @@ void setup()
     spi1.begin();
 
     // GPIO
-    timer_buz.setOverflow(nova::config::BUZZER_ON_INTERVAL * 1000, MICROSEC_FORMAT);
-    timer_buz.attachInterrupt([]
-                              {
-        gpio_write << io_function::pull_low(buzzerPin);
-        timer_buz.pause(); });
-    timer_buz.pause();
-    pinMode(to_digital(ledPin), OUTPUT); // LED
+    dout_low << ledPin
+             << buzzerPin;
 
-    dout_low << buzzerPin;
-    gpio_write << io_function::pull_high(buzzerPin);   
+    gpio_write << io_function::pull_high(buzzerPin);
     delay(100);
-    gpio_write << io_function::pull_low(buzzerPin);                            
-                         
+    gpio_write << io_function::pull_low(buzzerPin);
+
     // variable
     static bool state;
 
@@ -366,9 +364,9 @@ void setup()
     // ADC
     analogReadResolution(ADC_BITS);
 
-    pinMode(VOUT_Servo, INPUT);
-    pinMode(VOUT_EXT, INPUT);
-    pinMode(VMON, INPUT);
+    pinMode(digitalPinToAnalogInput(VOUT_Servo), INPUT);
+    pinMode(digitalPinToAnalogInput(VOUT_EXT), INPUT);
+    pinMode(digitalPinToAnalogInput(VMON), INPUT);
 
     auto pyro_cutoff = []
     {
@@ -410,7 +408,7 @@ void setup()
     };
 
     // Tasks
-    dispatcher << task_type(buzzer_control, 1000ul, millis, 0) // Adaptive
+    dispatcher << task_type(buzzer_control, &buzzer_intervals, 0) // Adaptive
                << task_type(pyro_cutoff, 0)
 
                << task_type(fsm_eval, 25ul, millis, 0)
@@ -422,7 +420,7 @@ void setup()
                << task_type(read_gnss, 100ul, millis, 2)
                << task_type(read_current, 500ul, millis, 3)
 
-            //    << task_type(transmit_receive_data, 10ul, millis, 252)
+               << task_type(transmit_receive_data, 10ul, millis, 252)
                << task_type(print_data, 1000ul, millis, 253)
                << task_type(construct_data, 25ul, millis, 254)
                << (task_type(save_data, &log_interval, 255), pvalid.sd);
@@ -437,11 +435,26 @@ void loop()
     dispatcher();
 }
 
-void buzzer_control()
+void buzzer_control(on_off_timer::interval_params *intervals_ms)
 {
     // On-off timer
-    // digitalToggle(buzzerPin);
-    digitalToggle(ledPin);
+    // Interval change keeper
+    static time_type prev_on = intervals_ms->t_on;
+    static time_type prev_off = intervals_ms->t_off;
+    static nova::state_t prev_state = nova::state_t::STARTUP;
+    static on_off_timer timer(intervals_ms->t_on, intervals_ms->t_off, millis);
+
+    if (prev_on != intervals_ms->t_on || prev_off != intervals_ms->t_off)
+    {
+        timer.set_interval_on(intervals_ms->t_on);
+        timer.set_interval_off(intervals_ms->t_off);
+        prev_on = intervals_ms->t_on;
+        prev_off = intervals_ms->t_off;
+
+        digitalToggle(to_digital(ledPin));
+        digitalToggle(to_digital(buzzerPin));
+        delay(intervals_ms->t_on + intervals_ms->t_off);
+    }
 }
 
 void read_gnss()
@@ -530,7 +543,30 @@ void read_current()
     float dvEXT = analogRead(digitalPinToAnalogInput(VOUT_Servo)) / ADC_DIVIDER * VREF;
     data.currentEXT = dvEXT / R_SHUNT;
 
-    data.voltageMon = analogRead(digitalPinToAnalogInput(VOUT_EXT)) / ADC_DIVIDER * VREF_VMON;
+    data.voltageMon = (float)analogRead(digitalPinToAnalogInput(VOUT_EXT));
+}
+
+void retain_deployment()
+{
+    int angle;
+    // Servo A
+    if (pos_a == nova::config::SERVO_A_DEPLOY)
+    {
+        for (angle = 60; angle <= nova::config::SERVO_A_DEPLOY; angle += 10)
+        {
+            servo_a.write(angle);
+            delay(20);
+        }
+    }
+    else if (angle == nova::config::SERVO_A_DEPLOY){
+        servo_a.write(angle);
+    }
+    else
+    {
+        servo_a.write(pos_a);
+    }
+    // Servo B
+    servo_b.write(pos_b);
 }
 
 void construct_data()
@@ -564,7 +600,7 @@ void construct_data()
 
     tx_data = "";
     csv_stream_crlf(tx_data)
-        << "<3>" // DEVICE NO
+        << "<1>" // DEVICE NO
         << params.center_freq
         << data.counter
 
@@ -572,7 +608,7 @@ void construct_data()
         << String(data.gps_latitude, 6)
         << String(data.gps_longitude, 6)
         << String(data.altitude, 4)
-        << String(ground_truth.apogee, 4)           
+        << String(ground_truth.apogee, 4)
 
         << data.voltageMon
 
@@ -713,47 +749,51 @@ void handle_command(String rx_message)
             log_interval = nova::config::LOG_PAD_PREOP_INTERVAL;
         }
     }
+    else if (command == "shutup")
+    {
+        PINS_OFF();
+    }
     else if (command == "servo-a-set")
     {
         if (data.ps != nova::state_t::IDLE_SAFE && data.ps != nova::state_t::RECOVERED_SAFE)
         {
-            servo_a.write(nova::config::SERVO_A_SET);
+            pos_a = nova::config::SERVO_A_SET;
         }
     }
     else if (command == "servo-a-lock")
     {
         if (data.ps != nova::state_t::IDLE_SAFE && data.ps != nova::state_t::RECOVERED_SAFE)
         {
-            servo_a.write(nova::config::SERVO_A_LOCK);
+            pos_a = nova::config::SERVO_A_LOCK;
         }
     }
     else if (command == "servo-a-deploy")
     {
         if (data.ps != nova::state_t::IDLE_SAFE && data.ps != nova::state_t::RECOVERED_SAFE)
         {
-            servo_a.write(nova::config::SERVO_A_DEPLOY);
+            pos_a = nova::config::SERVO_A_DEPLOY;
             data.pyro_a = nova::pyro_state_t::FIRING;
         }
     }
-    else if (command == "servo-a-set")
+    else if (command == "servo-b-set")
     {
         if (data.ps != nova::state_t::IDLE_SAFE && data.ps != nova::state_t::RECOVERED_SAFE)
         {
-            servo_b.write(nova::config::SERVO_B_SET);
+            pos_b = nova::config::SERVO_A_SET;
         }
     }
     else if (command == "servo-b-lock")
     {
         if (data.ps != nova::state_t::IDLE_SAFE && data.ps != nova::state_t::RECOVERED_SAFE)
         {
-            servo_b.write(nova::config::SERVO_B_LOCK);
+            pos_b = nova::config::SERVO_B_LOCK;
         }
     }
     else if (command == "servo-b-deploy")
     {
         if (data.ps != nova::state_t::IDLE_SAFE && data.ps != nova::state_t::RECOVERED_SAFE)
         {
-            servo_b.write(nova::config::SERVO_B_DEPLOY);
+            pos_b = nova::config::SERVO_B_DEPLOY;
             data.pyro_b = nova::pyro_state_t::FIRING;
         }
     }
@@ -816,12 +856,13 @@ void handle_command(String rx_message)
 
 void fsm_eval()
 {
+    static smart_delay Deploy_A(1ul, millis);
 
     static bool state_satisfaction = false;
     int32_t static launched_time = 0;
     static algorithm::Sampler sampler[2];
 
-    const double alt_x = filters.altitude.kf.state_vector[0] - ground_truth.altitude_offset;
+    const double alt_x = data.altitude - ground_truth.altitude_offset;
     const double vel_x = filters.altitude.kf.state_vector[1];
     const double acc = filters.acceleration.kf.state_vector[2];
 
@@ -979,10 +1020,11 @@ void fsm_eval()
         buzzer_intervals.t_off = nova::config::BUZZER_OFF_INTERVAL(nova::config::BUZZER_DESCEND_INTERVAL);
 
         static bool fired = false;
+        int angle;
 
         if (!fired)
         {
-            servo_a.write(nova::config::SERVO_A_DEPLOY); // Deploy
+            pos_a = nova::config::SERVO_A_DEPLOY;
             data.pyro_a = nova::pyro_state_t::FIRING;
             fired = true;
         }
@@ -1041,7 +1083,7 @@ void fsm_eval()
 
         if (!fired)
         {
-            servo_b.write(nova::config::SERVO_B_DEPLOY);
+            pos_b = nova::config::SERVO_B_DEPLOY;
             data.pyro_b = nova::pyro_state_t::FIRING;
             fired = true;
         }

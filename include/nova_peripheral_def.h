@@ -41,13 +41,6 @@ namespace nova::config {
         return 1000 / INTERVAL;
     };
 
-    constexpr uint8_t INA236_ADDRESS = 0x40;
-
-    enum INA236ADCRange {
-        RANGE_80MV = 0,
-        RANGE_20MV = 1
-    };
-
     constexpr uint32_t TIME_TO_APOGEE_MIN  = 14.69 * 1000ul;
     constexpr uint32_t TIME_TO_APOGEE_MAX  = 15.69 * 1000ul; //Sim 14.69
     constexpr uint32_t TIME_TO_BURNOUT_MIN = 1.85 * 1000ul;
@@ -60,8 +53,8 @@ namespace nova::config {
         constexpr uint32_t MAIN_DEPLOYMENT_TON = 200ul;          // 200 ms
         constexpr uint32_t LANDING_TON         = 5000ul;         // 200 ms
         constexpr double LAUNCH_ACC            = 30.0;       // 62.7 m/s^2
-        constexpr double APOGEE_VEL            = 5.0;           // m/s
-        constexpr double MAIN_ALTITUDE         = 150.f;  // m
+        constexpr double APOGEE_VEL            = 10.0;           // m/s
+        constexpr double MAIN_ALTITUDE         = 100.f;  // m
     }  // namespace alg
 
     constexpr unsigned long RFD900X_BAUD         = 460800;
@@ -90,12 +83,12 @@ namespace nova::config {
     constexpr uint32_t BUZZER_DESCEND_INTERVAL   = HZ_TO_INTERVAL_MS(1);    // 1 Hz
 
     constexpr int SERVO_A_DEPLOY = 180;
-    constexpr int SERVO_A_LOCK = 60;
-    constexpr int SERVO_A_SET = 0;
+    constexpr int SERVO_A_LOCK = 0;
+    constexpr int SERVO_A_SET = 60;
 
-    constexpr int SERVO_B_DEPLOY = 70;
+    constexpr int SERVO_B_DEPLOY = 60;
     constexpr int SERVO_B_LOCK = 180;
-    constexpr int SERVO_B_SET = 110;
+    constexpr int SERVO_B_SET = 90;
 
     constexpr auto BUZZER_OFF_INTERVAL           = [](const uint32_t BUZZER_TOTAL_INTERVAL) -> uint32_t {
         return BUZZER_TOTAL_INTERVAL - BUZZER_ON_INTERVAL;
