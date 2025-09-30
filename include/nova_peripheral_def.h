@@ -107,4 +107,9 @@ enum RadioMode {
 };
 volatile RadioMode currentMode = RADIO_MODE_IDLE;
 
+constexpr int RA_SERVO_MIN = 500;                                // us PWM
+constexpr int RA_SERVO_MAX = 2450;                               // us PWM
+constexpr int RA_SERVO_CEN = (RA_SERVO_MIN + RA_SERVO_MAX) / 2;  // us PWM
+
+
 #endif
