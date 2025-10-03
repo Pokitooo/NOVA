@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <Arduino_Extended.h>
+#include "RadioLib.h"
 // Pins defination
 
 // SPI

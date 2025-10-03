@@ -120,10 +120,8 @@ struct SERVO
     }
 };
 
-// SERVO servo_a(servoPinA);
-// SERVO servo_b(servoPinB);
-STM32ServoList servo_a(TIMER_SERVO);
-STM32ServoList servo_b(TIMER_SERVO);
+SERVO servo_a(servoPinA);
+SERVO servo_b(servoPinB);
 int pos_a = nova::config::SERVO_A_LOCK;
 int pos_b = nova::config::SERVO_B_LOCK;
 
@@ -244,8 +242,9 @@ time_type log_interval = nova::config::LOG_IDLE_INTERVAL;
 //
 void UserSetupActuator()
 {
-    servo_a.attach(servoPinA, RA_SERVO_MIN, RA_SERVO_MAX, RA_SERVO_MAX);
-    servo_b.attach(servoPinA, RA_SERVO_MIN, RA_SERVO_MAX, RA_SERVO_MAX);
+    // servo_a.attach(servoPinA, RA_SERVO_MIN, RA_SERVO_MAX, RA_SERVO_MAX);
+    // servo_b.attach(servoPinA, RA_SERVO_MIN, RA_SERVO_MAX, RA_SERVO_MAX);
+    Serial.println("Set Servo");
 }
 
 // variables
@@ -301,6 +300,9 @@ void setup()
     gpio_write << io_function::pull_high(buzzerPin);
     delay(100);
     gpio_write << io_function::pull_low(buzzerPin);
+
+    //Servo
+    UserSetupActuator();
 
     // variable
     static bool state;
@@ -430,7 +432,7 @@ void setup()
                << task_type(read_current, 500ul, millis, 3)
 
                << task_type(transmit_receive_data, 10ul, millis, 252)
-               << task_type(print_data, 1000ul, millis, 253)
+            //    << task_type(print_data, 1000ul, millis, 253)
                << task_type(construct_data, 25ul, millis, 254)
                << (task_type(save_data, &log_interval, 255), pvalid.sd);
 
@@ -563,20 +565,20 @@ void retain_deployment()
     {
         for (angle = 60; angle <= nova::config::SERVO_A_DEPLOY; angle += 10)
         {
-            servo_a[0].write(angle);
+            servo_a.write(angle);
             delay(20);
         }
     }
     else if (angle == nova::config::SERVO_A_DEPLOY)
     {
-        servo_a[0].write(angle);
+        servo_a.write(angle);
     }
     else
     {
-        servo_a[0].write(pos_a);
+        servo_a.write(pos_a);
     }
     // Servo B
-    servo_b[0].write(pos_b);
+    servo_b.write(pos_b);
 }
 
 void construct_data()
@@ -619,6 +621,7 @@ void construct_data()
         << String(data.gps_longitude, 6)
         << String(data.altitude, 4)
         << String(ground_truth.apogee, 4)
+
         << data.currentEXT
         << data.currentServo
         << data.voltageMon

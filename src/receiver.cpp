@@ -3,6 +3,7 @@
 #include <EEPROM.h>
 #include <RadioLib.h>
 #include <lib_xcore>
+#include "nova_pin_def.h"
 
 // LoRa State
 enum class LoRaState
@@ -15,14 +16,14 @@ enum class LoRaState
 // LoRa Parameters
 constexpr struct
 {
-  float center_freq = 920.600'000f; // MHz
+  float center_freq = 921.500'000f; // MHz
   float bandwidth = 125.f;          // kHz
   uint8_t spreading_factor = 9;     // SF: 6 to 12
   uint8_t coding_rate = 8;          // CR: 5 to 8
   uint8_t sync_word = 0x12;         // Private SX1262
   int8_t power = 22;                // up to 22 dBm for SX1262
   uint16_t preamble_length = 16;
-} lora_params;
+} params;
 
 // LoRa Pins
 constexpr uint32_t NSS_LORA = PA4;
@@ -30,16 +31,11 @@ constexpr uint32_t LORA_RXEN = PB13;
 constexpr uint32_t LORA_TXEN = PB12;
 
 // SPI
-SPIClass spi1(PA7, PA6, PA5);
+SPIClass spi1(PIN_SPI_MOSI1, PIN_SPI_MISO1, PIN_SPI_SCK1);
 
 // LoRa SX1262
-SPISettings lora_spi_config(2'000'000, MSBFIRST, SPI_MODE0);
-Module *lora_module = new Module(NSS_LORA,
-                                 RADIOLIB_NC,
-                                 PB14,
-                                 PB15,
-                                 spi1, lora_spi_config);
-SX1262 lora = lora_module;
+SPISettings lora_spi_settings(6'000'000, MSBFIRST, SPI_MODE0);
+SX1262 lora = new Module(LORA_NSS, LORA_DIO1, LORA_NRST, LORA_BUSY, spi1, lora_spi_settings);
 
 String tx_data;
 int status_lora;
@@ -49,28 +45,34 @@ volatile LoRaState lora_state = LoRaState::IDLE;
 uint32_t lora_tx_end_time;
 float lora_rssi;
 
+static bool state;
+
+extern void set_rxflag();
+
 void setup()
 {
   Serial.begin();
   delay(1000);
 
+  spi1.begin();
   // LoRa
-  int16_t lora_state = lora.begin(lora_params.center_freq,
-                                  lora_params.bandwidth,
-                                  lora_params.spreading_factor,
-                                  lora_params.coding_rate,
-                                  lora_params.sync_word,
-                                  lora_params.power,
-                                  lora_params.preamble_length,
-                                  0,
-                                  false);
-  lora_state = lora_state || lora.explicitHeader();
-  lora_state = lora_state || lora.setCRC(true);
-  lora_state = lora_state || lora.autoLDRO();
-  status_lora = lora_state;
-  lora.setRfSwitchPins(LORA_RXEN, LORA_TXEN);
-  Serial.printf("SX1262 LoRa %s\n", status_lora == RADIOLIB_ERR_NONE ? "SUCCESS" : "FAILED");
-  if (status_lora != RADIOLIB_ERR_NONE)
+  int lora_state = lora.begin(params.center_freq,
+                              params.bandwidth,
+                              params.spreading_factor,
+                              params.coding_rate,
+                              params.sync_word,
+                              params.power,
+                              params.preamble_length,
+                              0,
+                              false);
+  state = state || lora.explicitHeader();
+  state = state || lora.setCRC(true);
+  state = state || lora.autoLDRO();
+
+  lora.setPacketReceivedAction(set_rxflag);
+
+  Serial.printf("SX1262 LoRa %s\n", state == RADIOLIB_ERR_NONE ? "SUCCESS" : "FAILED");
+  if (state != RADIOLIB_ERR_NONE)
     Serial.printf("Initialization failed! Error: %d\n", lora_state);
 
   float freq;
@@ -151,4 +153,9 @@ void loop()
     lora.startReceive();
     Serial.println("[RECEIVING...]");
   }
+}
+
+void set_rxflag()
+{
+    rx_flag = true;
 }
