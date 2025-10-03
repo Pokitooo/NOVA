@@ -1233,9 +1233,6 @@ void print_data()
     Serial.print("currentServo = ");
     Serial.println(data.currentServo, 2); // print with 2 decimal places
 
-    Serial.print("currentEXT = ");
-    Serial.println(data.currentEXT, 2);
-
     Serial.print("voltageMon = ");
     Serial.println(data.voltageMon, 2);
 
