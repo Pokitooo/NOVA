@@ -77,7 +77,7 @@ SPISettings lora_spi_settings(6'000'000, MSBFIRST, SPI_MODE0);
 
 constexpr struct
 {
-    float center_freq = 921.50'000f; // MHz
+    float center_freq = 920.200'000f; // MHz
     float bandwidth = 125.f;         // kHz
     uint8_t spreading_factor = 9;    // SF: 6 to 12
     uint8_t coding_rate = 8;         // CR: 5 to 8
@@ -301,7 +301,7 @@ void setup()
     delay(100);
     gpio_write << io_function::pull_low(buzzerPin);
 
-    //Servo
+    // Servo
     UserSetupActuator();
 
     // variable
@@ -432,7 +432,7 @@ void setup()
                << task_type(read_current, 500ul, millis, 3)
 
                << task_type(transmit_receive_data, 10ul, millis, 252)
-            //    << task_type(print_data, 1000ul, millis, 253)
+               //    << task_type(print_data, 1000ul, millis, 253)
                << task_type(construct_data, 25ul, millis, 254)
                << (task_type(save_data, &log_interval, 255), pvalid.sd);
 

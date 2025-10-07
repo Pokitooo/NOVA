@@ -7,6 +7,7 @@
 
 #define SEALEVELPRESSURE_HPA (1013.25)
 
+#include <Arduino.h> 
 
 //Kalman filters
 template<typename T>
@@ -41,10 +42,13 @@ namespace nova::config {
         return 1000 / INTERVAL;
     };
 
-    constexpr uint32_t TIME_TO_APOGEE_MIN  = 14.69 * 1000ul;
-    constexpr uint32_t TIME_TO_APOGEE_MAX  = 15.69 * 1000ul; //Sim 14.69
-    constexpr uint32_t TIME_TO_BURNOUT_MIN = 1.85 * 1000ul;
-    constexpr uint32_t TIME_TO_BURNOUT_MAX = 2.85 * 1000ul; //Sim 1.85
+    constexpr uint32_t TIME_TO_BURNOUT_MIN = 1.35 * 1000ul;
+    constexpr uint32_t TIME_TO_BURNOUT_MAX = 2.35 * 1000ul; //Sim + 0.5
+    constexpr uint32_t TIME_TO_APOGEE_MIN  = 12.4 * 1000ul; //Sim -1
+    constexpr uint32_t TIME_TO_APOGEE_MAX  = 13.9 * 1000ul; //Sim +0.5
+    constexpr uint32_t TIME_TO_MAIN_MIN = 70.37 * 1000ul; //Sim - 10
+    constexpr uint32_t TIME_TO_MAIN_MAX = 82.37 * 1000ul; //Sim + 2
+
 
     namespace alg {
         constexpr uint32_t LAUNCH_TON          = 150ul;          // 150 ms

@@ -77,7 +77,7 @@ SPISettings lora_spi_settings(6'000'000, MSBFIRST, SPI_MODE0);
 
 constexpr struct
 {
-  float center_freq = 921.50'000f; // MHz
+  float center_freq = 920.200'000f; // MHz
   float bandwidth = 125.f;         // kHz
   uint8_t spreading_factor = 9;    // SF: 6 to 12
   uint8_t coding_rate = 8;         // CR: 5 to 8
@@ -431,7 +431,6 @@ void setup()
         te_a([]
              {
                     data.servoCheck = false;
-                    pos_a = nova::config::SERVO_A_LOCK;
                     test_a = false; });
       }
     }
@@ -452,7 +451,7 @@ void setup()
              << task_type(read_current, 500ul, millis, 3)
 
              << task_type(transmit_receive_data, 10ul, millis, 252)
-             //    << task_type(print_data, 1000ul, millis, 253)
+             << task_type(print_data, 1000ul, millis, 253)
              << task_type(construct_data, 25ul, millis, 254)
              << (task_type(save_data, &log_interval, 255), pvalid.sd);
 
@@ -631,6 +630,7 @@ void construct_data()
   tx_data = "";
   csv_stream_crlf(tx_data)
       << "<1>" // DEVICE NO
+      << "NOVA"
       << params.center_freq
       << data.counter
 
@@ -834,7 +834,7 @@ void handle_command(String rx_message)
     float current = 0.F;
     if (data.ps != nova::state_t::IDLE_SAFE && data.ps != nova::state_t::RECOVERED_SAFE)
     {
-      pos_a = nova::config::SERVO_A_LOCK + 5;
+      servo_a.write(nova::config::SERVO_A_LOCK + 5);
       for (size_t i = 0; i < 20; ++i)
       {
         float dvServo = analogRead(digitalPinToAnalogInput(VOUT_Servo)) / ADC_DIVIDER * VREF;
@@ -914,8 +914,6 @@ void handle_command(String rx_message)
 
 void fsm_eval()
 {
-  static smart_delay Deploy_A(1ul, millis);
-
   static bool state_satisfaction = false;
   int32_t static launched_time = 0;
   static algorithm::Sampler sampler[2];
@@ -1108,16 +1106,17 @@ void fsm_eval()
       tim.on_rising([&]
                     {
           if (sampler[0].vote<1, 1>()) {
-            state_satisfaction |= true;
+            state_satisfaction |= millis() - launched_time >= nova::config::TIME_TO_MAIN_MIN;
           }
           sampler[0].reset(); });
 
       tim.on_falling([&]
                      {
           if (sampler[1].vote<1, 1>()) {
-            state_satisfaction |= true;
+            state_satisfaction |= millis() - launched_time >= nova::config::TIME_TO_MAIN_MIN;
           }
           sampler[1].reset(); });
+      state_satisfaction |= millis() - launched_time >= nova::config::TIME_TO_MAIN_MAX;
     }
 
     if (state_satisfaction)
