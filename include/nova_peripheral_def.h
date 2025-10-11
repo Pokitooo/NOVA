@@ -42,12 +42,21 @@ namespace nova::config {
         return 1000 / INTERVAL;
     };
 
-    constexpr uint32_t TIME_TO_BURNOUT_MIN = 1.35 * 1000ul;
+    /*
+    NEED TO CHANGE 
+    */
+    constexpr uint32_t OPTIMUM_DELAY = 13.2; 
+    constexpr float frequency = 920.600'000f;
+    String DEVICE_NO = "<3>";
+    /*
+    */
+
+    constexpr uint32_t TIME_TO_BURNOUT_MIN = 1.35 * 1000ul; 
     constexpr uint32_t TIME_TO_BURNOUT_MAX = 2.35 * 1000ul; //Sim + 0.5
-    constexpr uint32_t TIME_TO_APOGEE_MIN  = 12.4 * 1000ul; //Sim -1
-    constexpr uint32_t TIME_TO_APOGEE_MAX  = 13.9 * 1000ul; //Sim +0.5
-    constexpr uint32_t TIME_TO_MAIN_MIN = 70.37 * 1000ul; //Sim - 10
-    constexpr uint32_t TIME_TO_MAIN_MAX = 82.37 * 1000ul; //Sim + 2
+    constexpr uint32_t TIME_TO_APOGEE_MIN  = (nova::config::OPTIMUM_DELAY - 1) * 1000ul; //Sim -1
+    constexpr uint32_t TIME_TO_APOGEE_MAX  = (nova::config::OPTIMUM_DELAY + 0.5) * 1000ul; //Sim +0.5
+    constexpr uint32_t TIME_TO_MAIN_MIN = 10 * 1000ul; //Sim - 10
+    constexpr uint32_t TIME_TO_MAIN_MAX = 30 * 1000ul; //Sim + 2
 
 
     namespace alg {
